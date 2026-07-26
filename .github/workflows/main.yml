@@ -12,7 +12,7 @@ on:
 
 jobs:
   test:
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux, AMD64]
     strategy:
       fail-fast: false
       matrix:
