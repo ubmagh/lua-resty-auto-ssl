@@ -1,5 +1,6 @@
 > [!NOTE] 
-> THis fork changes are fully summarized under [`FORKCHANGES.md`](./FORKCHANGES.md).
+> This fork changes are fully summarized under [`FORKCHANGES.md`](./FORKCHANGES.md).
+
 
 
 > [!WARNING] 
