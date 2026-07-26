@@ -13,6 +13,6 @@ References:
 - https://letsencrypt.org/2025/08/06/ocsp-service-has-reached-end-of-life
 - https://community.letsencrypt.org/t/ending-ocsp-support-in-2025/229786
 
-PR: _(link once opened)_
+PR: https://github.com/auto-ssl/lua-resty-auto-ssl/pull/313
 
 
