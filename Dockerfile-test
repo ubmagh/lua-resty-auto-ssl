@@ -24,8 +24,10 @@ RUN yum -y install epel-release && \
     lua \
     procps-ng \
     redis \
-    sudo \
-    https://bin.equinox.io/a/6iuHhJeWypm/ngrok-2.3.34-linux-amd64.rpm
+    sudo && \
+  curl -fsSL -o /tmp/ngrok.tgz https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz && \
+  tar -xzf /tmp/ngrok.tgz -C /usr/local/bin && \
+  rm -f /tmp/ngrok.tgz
 
 RUN mkdir /app
 WORKDIR /app

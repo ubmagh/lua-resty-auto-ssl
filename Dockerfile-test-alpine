@@ -28,9 +28,9 @@ RUN apk add --no-cache \
     sudo \
     tzdata \
     wget && \
-  curl -fsSL -o /tmp/ngrok.tar.gz https://bin.equinox.io/a/naDTyS8Kyxv/ngrok-2.3.34-linux-386.tar.gz && \
-  tar -xvf /tmp/ngrok.tar.gz -C /usr/local/bin/ && \
-  rm -f /tmp/ngrok.tar.gz && \
+  curl -fsSL -o /tmp/ngrok.tgz https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz && \
+  tar -xzf /tmp/ngrok.tgz -C /usr/local/bin/ && \
+  rm -f /tmp/ngrok.tgz && \
   chmod +x /usr/local/bin/ngrok
 
 COPY Makefile /app/Makefile

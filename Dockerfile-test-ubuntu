@@ -25,9 +25,10 @@ RUN apt-get update && \
     redis-server \
     sudo \
     tzdata && \
-  curl -fsSL -o /tmp/ngrok.deb https://bin.equinox.io/a/b2wQezFbsHk/ngrok-2.3.34-linux-amd64.deb && \
-  dpkg -i /tmp/ngrok.deb || apt-get -fy install && \
-  rm -f /tmp/ngrok.deb
+  curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null && \
+  echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" | tee /etc/apt/sources.list.d/ngrok.list && \
+  apt-get update && \
+  apt-get -y install ngrok
 
 RUN mkdir /app
 WORKDIR /app

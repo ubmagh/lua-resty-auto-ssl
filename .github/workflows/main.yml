@@ -29,7 +29,9 @@ jobs:
       - name: Lint
         run: docker compose run --rm ${{ matrix.variant }} make lint
       - name: Test
-        run: docker compose run --name "${{ matrix.variant }}-test" ${{ matrix.variant }} make test
+        env:
+          NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
+        run: docker compose run -e NGROK_AUTHTOKEN --name "${{ matrix.variant }}-test" ${{ matrix.variant }} make test
       - name: Copy Artifacts
         if: always()
         run: |

@@ -23,11 +23,28 @@ RUN yum -y install epel-release && \
     lua \
     procps-ng \
     redis \
-    sudo \
-    https://bin.equinox.io/a/6iuHhJeWypm/ngrok-2.3.34-linux-amd64.rpm
+    sudo && \
+  curl -fsSL -o /tmp/ngrok.tgz https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz && \
+  tar -xzf /tmp/ngrok.tgz -C /usr/local/bin && \
+  rm -f /tmp/ngrok.tgz
 
 ENV PATH /usr/local/openresty/luajit/bin:/usr/local/openresty/bin:/usr/local/openresty/nginx/sbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ENV TEST_NGINX_RESOLVER 127.0.0.11 ipv6=off
+
+# The LuaRocks bundled with this old OpenResty release is too old to parse
+# today's (much larger) luarocks.org manifest, so build a current release
+# against the bundled LuaJIT instead.
+RUN curl -fsSL -o /tmp/luarocks.tar.gz https://luarocks.org/releases/luarocks-3.13.0.tar.gz && \
+  tar -xzf /tmp/luarocks.tar.gz -C /tmp && \
+  cd /tmp/luarocks-3.13.0 && \
+  ./configure \
+    --prefix=/usr/local/openresty/luajit \
+    --with-lua=/usr/local/openresty/luajit \
+    --lua-suffix=jit \
+    --with-lua-include=/usr/local/openresty/luajit/include/luajit-2.1 && \
+  make build && \
+  make install && \
+  cd / && rm -rf /tmp/luarocks-3.13.0 /tmp/luarocks.tar.gz
 
 RUN mkdir /app
 WORKDIR /app
