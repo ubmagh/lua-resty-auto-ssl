@@ -1,5 +1,7 @@
 FROM openresty/openresty:1.11.2.1-centos
 
+RUN sed -i 's/mirrorlist.centos.org/vault.centos.org/g; s/^#.*baseurl=http/baseurl=http/g; s/^mirrorlist=http/#mirrorlist=http/g' /etc/yum.repos.d/*.repo
+
 # Runtime dependencies
 RUN yum -y install \
   bash \
