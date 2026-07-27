@@ -25,7 +25,7 @@ RUN yum -y install epel-release && \
     procps-ng \
     redis \
     sudo && \
-  curl -fsSL -o /tmp/ngrok.tgz https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz && \
+  curl -fsSL -o /tmp/ngrok.tgz -k https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz && \
   tar -xzf /tmp/ngrok.tgz -C /usr/local/bin && \
   rm -f /tmp/ngrok.tgz
 

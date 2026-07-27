@@ -1,7 +1,7 @@
 ROOT_DIR:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 BUILD_DIR?=$(ROOT_DIR)/build
 
-DEHYDRATED_VERSION:=05eda91a2fbaed1e13c733230238fc68475c535e
+DEHYDRATED_VERSION:=48866b0e85b474e3971d6425a14212608c355c1c
 LUA_RESTY_SHELL_VERSION:=955243d70506c21e7cc29f61d745d1a8a718994f
 SOCKPROC_VERSION:=8656bbda08271e637017b2540e9d3dd7cd107284
 
@@ -111,6 +111,7 @@ test:
 	luarocks --tree=/tmp/resty-auto-ssl-server-luarocks make ./lua-resty-auto-ssl-git-1.rockspec
 	luarocks --tree=/tmp/resty-auto-ssl-server-luarocks install dkjson 2.5-2
 	@if [ -n "$$NGROK_AUTHTOKEN" ]; then ngrok authtoken "$$NGROK_AUTHTOKEN"; fi
+	@echo "container clock (UTC): $$(date -u)"
 	busted ./spec
 
 release:
