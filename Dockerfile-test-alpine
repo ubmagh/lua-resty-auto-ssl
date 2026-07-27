@@ -22,7 +22,7 @@ RUN apk add --no-cache \
     gcc \
     git \
     lsof \
-    lua \
+    lua5.1 \
     procps \
     redis \
     sudo \
