@@ -37,8 +37,8 @@ jobs:
         if: always()
         run: |
           rm -rf /tmp/resty-auto-ssl-test
-          docker ps
-          docker cp ${{ matrix.variant }}:/tmp/resty-auto-ssl-test /tmp/resty-auto-ssl-test
+          docker ps -a
+          docker cp "${{ matrix.variant }}-test":/tmp/resty-auto-ssl-test /tmp/resty-auto-ssl-test
       - name: Upload Artifacts
         if: always()
         uses: actions/upload-artifact@v4
