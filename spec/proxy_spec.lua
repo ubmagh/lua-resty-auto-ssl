@@ -30,7 +30,7 @@ describe("proxy", function()
     local _, connect_err = httpc:connect("127.0.0.1", 9443)
     assert.equal(nil, connect_err)
 
-    local _, ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, true)
+    local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
     assert.equal(nil, ssl_err)
 
     local res, request_err = httpc:request({ path = "/foo" })
@@ -42,7 +42,7 @@ describe("proxy", function()
     assert.equal("foo", body)
 
     local error_log = server.read_error_log()
-    assert.matches("auto-ssl: issuing new certificate for " .. server.ngrok_hostname, error_log, nil, true)
+    assert.matches("auto-ssl: issuing new certificate for " .. server.tunnel_hostname, error_log, nil, true)
     assert.matches("http proxy auth: Basic ZGVtbzp0ZXN0", error_log, nil, true)
     assert.Not.matches("[warn]", error_log, nil, true)
     assert.matches("[error]", error_log, nil, true)

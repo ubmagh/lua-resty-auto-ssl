@@ -110,8 +110,6 @@ test:
 	rm -rf /tmp/resty-auto-ssl-server-luarocks
 	luarocks --tree=/tmp/resty-auto-ssl-server-luarocks make ./lua-resty-auto-ssl-git-1.rockspec
 	luarocks --tree=/tmp/resty-auto-ssl-server-luarocks install dkjson 2.5-2
-	@if [ -n "$$NGROK_AUTHTOKEN" ]; then ngrok authtoken "$$NGROK_AUTHTOKEN"; fi
-	@echo "container clock (UTC): $$(date -u)"
 	busted ./spec
 
 release:

@@ -15,7 +15,6 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix:
         variant:
           - centos
@@ -30,14 +29,11 @@ jobs:
       - name: Lint
         run: docker compose run --rm ${{ matrix.variant }} make lint
       - name: Test
-        env:
-          NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
-        run: docker compose run -e NGROK_AUTHTOKEN --name "${{ matrix.variant }}-test" ${{ matrix.variant }} make test
+        run: docker compose run --name "${{ matrix.variant }}-test" ${{ matrix.variant }} make test
       - name: Copy Artifacts
         if: always()
         run: |
           rm -rf /tmp/resty-auto-ssl-test
-          docker ps -a
           docker cp "${{ matrix.variant }}-test":/tmp/resty-auto-ssl-test /tmp/resty-auto-ssl-test
       - name: Upload Artifacts
         if: always()

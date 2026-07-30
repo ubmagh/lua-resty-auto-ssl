@@ -23,7 +23,7 @@ describe("redis", function()
       local _, connect_err = httpc:connect("127.0.0.1", 9443)
       assert.equal(nil, connect_err)
 
-      local _, ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, true)
+      local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
       assert.equal(nil, ssl_err)
 
       local res, request_err = httpc:request({ path = "/foo" })
@@ -39,7 +39,7 @@ describe("redis", function()
       assert.equal(nil, redis_connect_err)
       assert.truthy(redis_connect_ok)
 
-      local get_res, get_err = r:get(server.ngrok_hostname .. ":latest")
+      local get_res, get_err = r:get(server.tunnel_hostname .. ":latest")
       assert.equal(nil, get_err)
       assert.string(get_res)
 
@@ -69,7 +69,7 @@ describe("redis", function()
       local _, connect_err = httpc:connect("127.0.0.1", 9443)
       assert.equal(nil, connect_err)
 
-      local _, ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, true)
+      local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
       assert.equal(nil, ssl_err)
 
       local res, request_err = httpc:request({ path = "/foo" })
@@ -108,7 +108,7 @@ describe("redis", function()
       local _, connect_err = httpc:connect("127.0.0.1", 9443)
       assert.equal(nil, connect_err)
 
-      local _, ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, true)
+      local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
       assert.equal(nil, ssl_err)
 
       local res, request_err = httpc:request({ path = "/foo" })
@@ -124,7 +124,7 @@ describe("redis", function()
       assert.equal(nil, redis_connect_err)
       assert.truthy(redis_connect_ok)
 
-      local get_res, get_err = r:get("key-prefix:" .. server.ngrok_hostname .. ":latest")
+      local get_res, get_err = r:get("key-prefix:" .. server.tunnel_hostname .. ":latest")
       assert.equal(nil, get_err)
       assert.string(get_res)
 
@@ -154,7 +154,7 @@ describe("redis", function()
       local _, connect_err = httpc:connect("127.0.0.1", 9443)
       assert.equal(nil, connect_err)
 
-      local _, ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, true)
+      local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
       assert.equal(nil, ssl_err)
 
       local res, request_err = httpc:request({ path = "/foo" })
@@ -192,7 +192,7 @@ describe("redis", function()
     local _, connect_err = httpc:connect("127.0.0.1", 9443)
     assert.equal(nil, connect_err)
 
-    local _, ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, true)
+    local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
     assert.equal(nil, ssl_err)
 
     local res, request_err = httpc:request({ path = "/foo" })
@@ -212,7 +212,7 @@ describe("redis", function()
     assert.equal(nil, select_err)
     assert.truthy(select_ok)
 
-    local get_res, get_err = r:get("db-test-prefix:" .. server.ngrok_hostname .. ":latest")
+    local get_res, get_err = r:get("db-test-prefix:" .. server.tunnel_hostname .. ":latest")
     assert.equal(nil, get_err)
     assert.string(get_res)
 
@@ -288,7 +288,7 @@ describe("redis", function()
     local _, connect_err = httpc:connect("127.0.0.1", 9443)
     assert.equal(nil, connect_err)
 
-    local _, ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, true)
+    local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
     assert.equal("18: self signed certificate", ssl_err)
 
     local error_log = server.read_error_log()

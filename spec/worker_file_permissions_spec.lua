@@ -15,7 +15,7 @@ describe("worker file permissions", function()
     local _, connect_err = httpc:connect("127.0.0.1", 9443)
     assert.equal(nil, connect_err)
 
-    local _, ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, true)
+    local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
     assert.equal(nil, ssl_err)
 
     local res, request_err = httpc:request({ path = "/foo" })
@@ -52,7 +52,7 @@ describe("worker file permissions", function()
       "./letsencrypt/locks " .. server.nobody_user .. " " .. server.nobody_group .. " 755 d",
       "./storage " .. server.nobody_user .. " " .. server.nobody_group .. " 755 d",
       "./storage/file " .. server.nobody_user .. " " .. server.nobody_group .. " 700 d",
-      "./storage/file/" .. ngx.escape_uri(server.ngrok_hostname .. ":latest") .. " " .. server.nobody_user .. " " .. server.nobody_group .. " 644 f",
+      "./storage/file/" .. ngx.escape_uri(server.tunnel_hostname .. ":latest") .. " " .. server.nobody_user .. " " .. server.nobody_group .. " 644 f",
       "./tmp root root 777 d",
     }, lines)
   end)

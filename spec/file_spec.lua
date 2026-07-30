@@ -18,7 +18,7 @@ describe("file", function()
     local _, connect_err = httpc:connect("127.0.0.1", 9443)
     assert.equal(nil, connect_err)
 
-    local _, ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, true)
+    local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
     assert.equal(nil, ssl_err)
 
     local res, request_err = httpc:request({ path = "/foo" })
@@ -29,7 +29,7 @@ describe("file", function()
     assert.equal(nil, body_err)
     assert.equal("foo", body)
 
-    local content = assert(file.read(server.current_test_dir .. "/auto-ssl/storage/file/" .. ngx.escape_uri(server.ngrok_hostname .. ":latest")))
+    local content = assert(file.read(server.current_test_dir .. "/auto-ssl/storage/file/" .. ngx.escape_uri(server.tunnel_hostname .. ":latest")))
     assert.string(content)
 
     local data, json_err = cjson.decode(content)
@@ -56,7 +56,7 @@ describe("file", function()
     local _, renewal_connect_err = httpc:connect("127.0.0.1", 9443)
     assert.equal(nil, renewal_connect_err)
 
-    local _, renewal_ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, true)
+    local _, renewal_ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
     assert.equal(nil, renewal_ssl_err)
 
     local renewal_res, renewal_request_err = httpc:request({ path = "/foo" })

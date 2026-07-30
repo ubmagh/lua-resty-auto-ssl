@@ -28,10 +28,8 @@ RUN apk add --no-cache \
     sudo \
     tzdata \
     wget && \
-  curl -fsSL -o /tmp/ngrok.tgz -k https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz && \
-  tar -xzf /tmp/ngrok.tgz -C /usr/local/bin/ && \
-  rm -f /tmp/ngrok.tgz && \
-  chmod +x /usr/local/bin/ngrok
+  curl -fsSL -o /usr/local/bin/cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 && \
+  chmod +x /usr/local/bin/cloudflared
 
 COPY Makefile /app/Makefile
 RUN git config --global url."https://github.com/".insteadOf git://github.com/

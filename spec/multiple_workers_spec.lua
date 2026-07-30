@@ -7,7 +7,7 @@ local function make_http_requests()
   local _, connect_err = httpc:connect("127.0.0.1", 9443)
   assert.equal(nil, connect_err)
 
-  local _, ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, true)
+  local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
   assert.equal(nil, ssl_err)
 
   -- Make pipelined requests on this connection to test behavior across

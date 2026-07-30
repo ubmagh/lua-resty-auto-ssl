@@ -22,14 +22,14 @@ describe("json adapter cjson", function()
     assert.equal(nil, connect_err)
     assert.truthy(connect_ok)
 
-    local _, set_err = r:set(server.ngrok_hostname .. ":latest", '{"invalid_json"')
+    local _, set_err = r:set(server.tunnel_hostname .. ":latest", '{"invalid_json"')
     assert.equal(nil, set_err)
 
     local httpc = http.new()
     local _, http_connect_err = httpc:connect("127.0.0.1", 9443)
     assert.equal(nil, http_connect_err)
 
-    local _, ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, true)
+    local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
     assert.equal(nil, ssl_err)
 
     local res, request_err = httpc:request({ path = "/foo" })
@@ -40,7 +40,7 @@ describe("json adapter cjson", function()
     assert.equal(nil, body_err)
     assert.equal("foo", body)
 
-    local get_res, get_err = r:get(server.ngrok_hostname .. ":latest")
+    local get_res, get_err = r:get(server.tunnel_hostname .. ":latest")
     assert.equal(nil, get_err)
     assert.string(get_res)
 
@@ -49,7 +49,7 @@ describe("json adapter cjson", function()
     assert.string(data["fullchain_pem"])
 
     local error_log = server.read_error_log()
-    assert.matches("auto-ssl: error fetching certificate from storage for " .. server.ngrok_hostname .. ": Expected colon but found T_END at character 16", error_log, nil, true)
+    assert.matches("auto-ssl: error fetching certificate from storage for " .. server.tunnel_hostname .. ": Expected colon but found T_END at character 16", error_log, nil, true)
     assert.matches("auto-ssl: issuing new certificate for", error_log, nil, true)
     assert.Not.matches("[warn]", error_log, nil, true)
     assert.Not.matches("[alert]", error_log, nil, true)

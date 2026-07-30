@@ -31,7 +31,7 @@ describe("option generate_certs", function()
       local _, connect_err = httpc:connect("127.0.0.1", 9444)
       assert.equal(nil, connect_err)
 
-      local _, ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, true)
+      local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
       assert.equal("18: self signed certificate", ssl_err)
     end
 
@@ -40,7 +40,7 @@ describe("option generate_certs", function()
       local _, connect_err = httpc:connect("127.0.0.1", 9444)
       assert.equal(nil, connect_err)
 
-      local _, ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, false)
+      local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, false)
       assert.equal(nil, ssl_err)
 
       local res, request_err = httpc:request({ path = "/foo" })
@@ -59,7 +59,7 @@ describe("option generate_certs", function()
       local _, connect_err = httpc:connect("127.0.0.1", 9443)
       assert.equal(nil, connect_err)
 
-      local _, ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, true)
+      local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
       assert.equal(nil, ssl_err)
 
       local res, request_err = httpc:request({ path = "/foo" })
@@ -78,7 +78,7 @@ describe("option generate_certs", function()
       local _, connect_err = httpc:connect("127.0.0.1", 9444)
       assert.equal(nil, connect_err)
 
-      local _, ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, true)
+      local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
       assert.equal(nil, ssl_err)
 
       local res, request_err = httpc:request({ path = "/foo" })
