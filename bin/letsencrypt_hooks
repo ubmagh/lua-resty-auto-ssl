@@ -38,6 +38,10 @@ deploy_cert() {
     echo "failed to get the expiry date"
   fi
 
+  echo "auto-ssl debug: leaf: $(openssl x509 -in "$CERTFILE" -noout -subject -issuer -dates 2>&1)"
+  echo "auto-ssl debug: fullchain: $(openssl crl2pkcs7 -nocrl -certfile "$FULLCHAINFILE" 2>&1 | openssl pkcs7 -print_certs -noout -subject -issuer -dates 2>&1)"
+  echo "auto-ssl debug: system date: $(date -u)"
+
   curl --silent --show-error --fail -XPOST \
     --header "X-Hook-Secret: $HOOK_SECRET" \
     --data-urlencode "domain=$DOMAIN" \
