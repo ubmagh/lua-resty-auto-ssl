@@ -50,12 +50,15 @@ PR: [####2](https://github.com/ubmagh/lua-resty-auto-ssl/pull/2)
 
 New features planned for upcoming fork releases.
 
-- **Configurable storage TTLs** — new `challenge_keys_exptime` (default 1h) and `ssl_certs_keys_exptime` (default 90 days) options, so ACME challenge tokens and cached certs actually expire in storage instead of persisting indefinitely. Best suited to the Redis storage adapter, since the file adapter's `ngx-timer`-based expiry doesn't hold up for long TTLs. Set `ssl_certs_keys_exptime` to match your CA's certificate lifetime (90 days by default, matching Let's Encrypt's) so cached certs get cleaned up automatically right around when they'd expire anyway.
+- **Configurable storage TTLs** — new `challenge_keys_exptime` (default 1h) and `ssl_certs_keys_exptime` (default 90 days) options, so ACME challenge tokens and cached certs actually expire in storage instead of persisting indefinitely. Best suited to the Redis storage adapter, since the file adapter's `ngx-timer`-based expiry doesn't hold up for long TTLs. A new `ssl_certs_keys_expire_mode` option controls how the cert TTL is derived: `0` disables it, `1` always uses the flat `ssl_certs_keys_exptime` value, and `2` (the default) computes it from each cert's actual expiry date instead, so storage cleans itself up right around when a given cert would expire anyway, regardless of the configured default.
 
   ```lua
   auto_ssl:set("challenge_keys_exptime", 3600)     -- 1 hour
-  auto_ssl:set("ssl_certs_keys_exptime", 7776000)  -- 90 days
+  auto_ssl:set("ssl_certs_keys_exptime", 7776000)  -- 90 days, used for ssl mode 1
+  auto_ssl:set("ssl_certs_keys_expire_mode", 2)    -- 0 = no TTL, 1 = flat TTL, 2 = per-cert expiry (default)
   ```
+
+- **Case-insensitive domain keys in storage** — domains are now normalized to lowercase everywhere they touch storage (cache keys, storage keys, renewals, issuance), instead of only in some code paths. Requests for the same domain in different cases (`Example.com` vs `example.com`) now share one cert/cache entry instead of each triggering its own issuance.
 
 PR: _(link once opened)_
 

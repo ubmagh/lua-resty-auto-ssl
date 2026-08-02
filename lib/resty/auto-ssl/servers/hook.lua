@@ -48,7 +48,7 @@ return function(auto_ssl_instance)
       ngx.log(ngx.ERR, "auto-ssl: failed to parse expiry date: ", parse_err)
     end
 
-    local _, err = storage:set_cert(params["domain"], params["fullchain"], params["privkey"], params["cert"], expiry)
+    local _, err = storage:set_cert(string.lower(params["domain"]), params["fullchain"], params["privkey"], params["cert"], expiry)
     if err then
       ngx.log(ngx.ERR, "auto-ssl: failed to set cert: ", err)
       return ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)

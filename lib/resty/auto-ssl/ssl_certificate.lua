@@ -203,6 +203,8 @@ local function do_ssl(auto_ssl_instance, ssl_options)
     return
   end
 
+  domain = string.lower(domain)
+
   -- Get or issue the certificate for this domain.
   local cert_der, get_cert_der_err = get_cert_der(auto_ssl_instance, domain, ssl_options)
   if get_cert_der_err then

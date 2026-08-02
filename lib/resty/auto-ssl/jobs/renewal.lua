@@ -205,7 +205,7 @@ local function renew_all_domains(auto_ssl_instance)
     shuffle_table(domains)
 
     for _, domain in ipairs(domains) do
-      renew_check_cert(auto_ssl_instance, storage, domain)
+      renew_check_cert(auto_ssl_instance, storage, string.lower(domain))
     end
   end
 end

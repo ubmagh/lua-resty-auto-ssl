@@ -104,7 +104,7 @@ function _M.delete(self, key)
     return false, connection_err
   end
 
-  return connection:del(prefixed_key(self, key))
+  return connection:expire(prefixed_key(self, key), 0)
 end
 
 function _M.keys_with_suffix(self, suffix)

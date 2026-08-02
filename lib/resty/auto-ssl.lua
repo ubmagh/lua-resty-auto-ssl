@@ -53,6 +53,10 @@ function _M.new(options)
     options["hook_server_port"] = 8999
   end
 
+  if not options["ssl_certs_keys_expire_mode"] then
+    options["ssl_certs_keys_expire_mode"] = 2
+  end
+
   if not options["challenge_keys_exptime"] then
     options["challenge_keys_exptime"] = 3600 -- 1h defaults
   end

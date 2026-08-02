@@ -56,8 +56,27 @@ function _M.set_cert(self, domain, fullchain_pem, privkey_pem, cert_pem, expiry)
     return nil, err
   end
 
+  local certs_expiry_cases = {
+    [0]= function () -- disable TTL at all 
+            return {}
+          end,
+    [1]= function () -- use the configured TTL
+           return { exptime = self.ssl_certs_keys_exptime }
+          end,
+    [2]= function () -- use the expiry of the cert as TTL
+            if not expiry then
+              return { exptime = self.ssl_certs_keys_exptime }
+            end
+            return { exptime = tonumber(expiry) - ngx.time() + 60 } -- add 60 seconds of tolerance
+          end
+  }
+  
   -- Store the cert under the "latest" alias, which is what this app will use.
-  return self.adapter:set(domain .. ":latest", string, { exptime = self.ssl_certs_keys_exptime })
+  if certs_expiry_cases[self.ssl_certs_keys_expire_mode] then
+    return self.adapter:set(domain .. ":latest", string, certs_expiry_cases[self.ssl_certs_keys_expire_mode]())
+  else
+    return self.adapter:set(domain .. ":latest", string, certs_expiry_cases[2]())
+  end
 end
 
 function _M.delete_cert(self, domain)
@@ -73,7 +92,7 @@ function _M.all_cert_domains(self)
   local domains = {}
   for _, key in ipairs(keys) do
     local domain = ngx.re.sub(key, ":latest$", "", "jo")
-    table.insert(domains, domain)
+    table.insert(domains, string.lower(domain))
   end
 
   return domains
