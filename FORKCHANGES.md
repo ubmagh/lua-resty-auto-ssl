@@ -13,6 +13,7 @@ References:
 - https://letsencrypt.org/2025/08/06/ocsp-service-has-reached-end-of-life
 - https://community.letsencrypt.org/t/ending-ocsp-support-in-2025/229786
 
+
 PR: [####1](https://github.com/ubmagh/lua-resty-auto-ssl/pull/1)
 
 #### CI fixes
@@ -29,6 +30,11 @@ Fixed one broken dependency at a time as they surfaced:
 - **Old GCC rejects C99 syntax** — the same `openresty1.13`/`lua51` images ship a GCC that defaults to `gnu89`, which rejects the C99-style `for` loop declarations used by `luasystem` (a transitive `busted` dependency). Set `luarocks config variables.CFLAGS "-O2 -fPIC -std=gnu99"` for those two variants.
 - **Expired fallback test fixture** — `spec/certs/example_fallback.crt` was a static, self-signed dummy cert generated in 2016 with a 10-year validity window, which lapsed on 2026-03-27. Any test that fell back to it (for any reason) failed with a misleading "certificate has expired" error, unrelated to the actual cert/domain under test. Regenerated with a fresh far-future expiry (2046).
 - **ngrok free tier no longer usable** — it intercepts ACME HTTP-01 challenges on its own managed dev-domain, so real Let's Encrypt issuance could never complete. Replaced ngrok with Cloudflare Tunnel (`cloudflared` quick tunnels) across all 5 Docker images and the test harness — anonymous, no account/token required, and the challenge path passes through untouched.
+- **Unpinned `cloudflared` version** — the initial Cloudflare Tunnel install used a different unpinned method per distro (yum repo, apt repo, GitHub `releases/latest`), so the 5 images could silently drift to different `cloudflared` builds depending on build time. Standardized all 5 Dockerfiles on the same pinned GitHub release binary.
+- **`dehydrated` requires `hexdump`, which none of the images installed** — dehydrated checks for it at startup and exits immediately if it's missing, before attempting any ACME work at all. This single missing binary was silently causing every cert-issuing test to fail (falling back to the self-signed fallback cert, missing working directories dehydrated never got to create, mismatched error-text assertions for scenarios never reached) despite looking like several unrelated bugs. Added the package that provides it per distro: `util-linux` (the 3 CentOS-based images), `bsdextrautils` (ubuntu), `hexdump` (alpine).
+- **Stale Let's Encrypt staging trust bundle** — `spec/certs/letsencrypt_staging_chain.pem` (used by the test harness to trust Let's Encrypt's staging root, since staging certs aren't in any public trust store) hardcoded the 2016-era `Fake LE Root X1`/`Fake LE Intermediate X1` pair. Let's Encrypt has since rotated staging to entirely different, cryptographically unrelated roots (`(STAGING) Pretend Pear X1` and others). Once real issuance started succeeding (after the `hexdump` fix), every verification failed with `unable to get local issuer certificate` since the bundled trust file didn't match. Rebuilt it from the 4 currently-active staging roots published by Let's Encrypt.
+- Follow-up cleanup of 1st PR: `http_proxy_options` was only ever documented and used for routing OCSP stapling requests through a proxy. With OCSP gone, it had no remaining consumer anywhere in `lib/`. Removed it from the README and deleted `spec/proxy_spec.lua`, which only existed to test that dead option.
+- **Frozen CA trust bundle on the old `openresty1.13`/`lua51` images** — their bundled CA store predates Let's Encrypt's 2025 root rotation entirely, so `curl` can't verify most of the modern internet from inside them, including `luarocks.org` and `github.com`. Bootstrapped a current CA bundle from `curl.se` (one narrowly-scoped insecure fetch, since even that source chains through the same new root) and overwrote the system trust store with it, instead of disabling verification on every subsequent request.
 
 PR: [####2](https://github.com/ubmagh/lua-resty-auto-ssl/pull/2)
 
