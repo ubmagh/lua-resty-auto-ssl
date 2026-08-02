@@ -1,6 +1,11 @@
 local http = require "resty.http"
 local server = require "spec.support.server"
 
+-- This test has occasionally dropped a small fraction of its 1000 requests
+-- under the free Cloudflare Tunnel (which is explicitly best-effort, no
+-- uptime guarantee) rather than every run. The ngx.log calls below are kept
+-- intentionally so a recurrence surfaces the actual failing step and error
+-- in the CI log artifact, instead of just the generic count mismatch.
 local function make_http_requests()
   local httpc = http.new()
 

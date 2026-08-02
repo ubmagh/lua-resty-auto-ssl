@@ -1,7 +1,7 @@
 
-### Fork changes
+## Fork changes
 
-#### Remove OCSP stapling support
+### Remove OCSP stapling support
 
 OCSP stapling has been dropped (`ocsp_stapling_error_level` option, `get_ocsp_response`/`set_ocsp_stapling` in `ssl_certificate.lua`, and the `ngx.ocsp` dependency). Most CAs have deprecated or fully shut down OCSP in favor of CRLs, so this code path was querying infrastructure that increasingly no longer exists:
 
@@ -16,7 +16,9 @@ References:
 
 PR: [####1](https://github.com/ubmagh/lua-resty-auto-ssl/pull/1)
 
-#### CI fixes
+---
+
+### CI fixes
 
 Bumped the OpenResty base images used by the GitHub Actions test matrix (`centos`, `ubuntu`, `alpine`), which had been pinned for years and had accumulated several dead external dependencies along the way. `openresty1.13` and `lua51` were left on their original old pinned versions, since those two variants exist specifically to test backward compatibility with older OpenResty releases.
 
@@ -41,4 +43,6 @@ Fixed one broken dependency at a time as they surfaced:
 - **"self signed" vs "self-signed" wasn't just a typo — it's two different OpenSSL versions** — `lua51`/`openresty1.13` are deliberately never bumped, so they still bundle an older OpenSSL that phrases this verify error without a hyphen, while the bumped images' newer OpenSSL uses one. The 14 assertions hardcoding the exact string only ever matched one or the other. Switched them from an exact string match to a pattern (`"^18: self.signed certificate$"`) checking the stable part — the numeric error code — instead of pinning OpenSSL's exact wording, which is free to vary release to release.
 
 PR: [####2](https://github.com/ubmagh/lua-resty-auto-ssl/pull/2)
+
+---
 
