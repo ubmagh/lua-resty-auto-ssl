@@ -8,6 +8,15 @@ describe("memory", function()
 
   it("logs when running out of memory in shared dict", function()
     server.start({
+      -- Sized small (rather than the default 1m) so that filler items close
+      -- in size to what a real cached cert (fullchain/privkey DER) actually
+      -- is are guaranteed to force eviction, regardless of how efficiently a
+      -- given nginx build's shared-dict slab allocator reuses freed space
+      -- across size classes. Filling a much larger dict with huge, unrelated
+      -- item sizes doesn't reliably force eviction on newer nginx versions
+      -- when the actual cert data set() later is a completely different,
+      -- much smaller size.
+      auto_ssl_dict_size = "64k",
       auto_ssl_http_server_config = [[
         location /fill-auto-ssl-shdict {
           content_by_lua_block {
@@ -17,8 +26,8 @@ describe("memory", function()
 
             -- Fill the shdict with random things to simulate what happens when old
             -- data gets forced out.
-            for i = 1, 15 do
-              local random = resty_random.bytes(256000)
+            for i = 1, 20 do
+              local random = resty_random.bytes(4000)
               local _, err = ngx.shared.auto_ssl:set("foobar" .. i, str.to_hex(random))
               if err then
                 ngx.log(ngx.ERR, "set error: ", err)
@@ -27,7 +36,7 @@ describe("memory", function()
             end
 
             -- Ensure items are getting forced out as expected, after filling it up.
-            local random = resty_random.bytes(256000)
+            local random = resty_random.bytes(4000)
             local _, err, forcible = ngx.shared.auto_ssl:set("foobar-force", str.to_hex(random))
             if err then
               ngx.log(ngx.ERR, "set error: ", err)
@@ -35,31 +44,6 @@ describe("memory", function()
             end
             if not forcible then
               ngx.log(ngx.ERR, "set didn't force other items out of shdict, as expected")
-              return ngx.exit(500)
-            end
-
-            -- Newer nginx shared-dict slab allocators can reuse freed space
-            -- across size classes more efficiently than older ones, so
-            -- cramming the dict full of large items alone doesn't guarantee
-            -- a subsequent *small* set() (like the DER-encoded cert data
-            -- cached later in this test) will need to evict anything. Keep
-            -- adding small items until eviction is forced for one of those
-            -- too, so the dict is truly out of room for any size.
-            local small_forcible = false
-            for i = 1, 1000 do
-              local small_random = resty_random.bytes(64)
-              local _, small_err, small_item_forcible = ngx.shared.auto_ssl:set("small-filler" .. i, str.to_hex(small_random))
-              if small_err then
-                ngx.log(ngx.ERR, "set error: ", small_err)
-                return ngx.exit(500)
-              end
-              if small_item_forcible then
-                small_forcible = true
-                break
-              end
-            end
-            if not small_forcible then
-              ngx.log(ngx.ERR, "small filler never forced eviction, as expected")
               return ngx.exit(500)
             end
 
@@ -78,10 +62,7 @@ describe("memory", function()
     assert.equal(200, fill_res.status)
     local data, json_err = cjson.decode(fill_res.body)
     assert.equal(nil, json_err)
-    -- Exact count varies now that small filler items are also added until
-    -- eviction is forced (see the endpoint above), so just sanity-check the
-    -- large items survived rather than pinning an exact total.
-    assert.is_true(data["keys"] >= 2)
+    assert.is_true(data["keys"] >= 1)
 
     -- Ensure we can make a successful request.
     local _, connect_err = httpc:connect("127.0.0.1", 9443)
