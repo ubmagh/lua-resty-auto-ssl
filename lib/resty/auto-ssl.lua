@@ -45,10 +45,6 @@ function _M.new(options)
     options["json_adapter"] = "resty.auto-ssl.json_adapters.cjson"
   end
 
-  if not options["ocsp_stapling_error_level"] then
-    options["ocsp_stapling_error_level"] = ngx.ERR
-  end
-
   if not options["renew_check_interval"] then
     options["renew_check_interval"] = 86400 -- 1 day
   end

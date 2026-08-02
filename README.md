@@ -1,3 +1,8 @@
+> [!NOTE] 
+> This fork changes are fully summarized under [`FORKCHANGES.md`](./FORKCHANGES.md).
+
+
+
 > [!WARNING] 
 > ![](https://img.shields.io/badge/Project%20Status-Abandoned-orange)  
 > This project is currently abandoned, if you're looking for an open source ACME client with built in SSL/TLS support, feel free to try out other related projects.
