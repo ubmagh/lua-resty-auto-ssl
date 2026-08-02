@@ -32,7 +32,7 @@ describe("option generate_certs", function()
       assert.equal(nil, connect_err)
 
       local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
-      assert.equal("18: self-signed certificate", ssl_err)
+      assert.matches("^18: self.signed certificate$", ssl_err)
     end
 
     -- Reconnect and try again with ssl verification disabled.

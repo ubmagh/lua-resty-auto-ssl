@@ -289,7 +289,7 @@ describe("redis", function()
     assert.equal(nil, connect_err)
 
     local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
-    assert.equal("18: self-signed certificate", ssl_err)
+    assert.matches("^18: self.signed certificate$", ssl_err)
 
     local error_log = server.read_error_log()
     assert.matches("bad argument #3 to 'connect'", error_log, nil, true)

@@ -67,7 +67,7 @@ describe("sanity", function()
     assert.equal(nil, connect_err)
 
     local _, ssl_err = httpc:ssl_handshake(nil, nil, true)
-    assert.equal("18: self-signed certificate", ssl_err)
+    assert.matches("^18: self.signed certificate$", ssl_err)
 
     local error_log = server.read_error_log()
     assert.matches("auto-ssl: could not determine domain for request (SNI not supported?) - using fallback - ", error_log, nil, true)
@@ -88,7 +88,7 @@ describe("sanity", function()
     assert.equal(nil, connect_err)
 
     local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
-    assert.equal("18: self-signed certificate", ssl_err)
+    assert.matches("^18: self.signed certificate$", ssl_err)
 
     local error_log = server.read_error_log()
     assert.matches("auto-ssl: domain not allowed - using fallback - " .. server.tunnel_hostname, error_log, nil, true)
@@ -116,7 +116,7 @@ describe("sanity", function()
     assert.equal(nil, connect_err)
 
     local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
-    assert.equal("18: self-signed certificate", ssl_err)
+    assert.matches("^18: self.signed certificate$", ssl_err)
 
     local error_log = server.read_error_log()
     assert.matches("allow_domain called: " .. server.tunnel_hostname, error_log, nil, true)
@@ -151,7 +151,7 @@ describe("sanity", function()
     assert.equal(nil, connect_err)
 
     local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
-    assert.equal("18: self-signed certificate", ssl_err)
+    assert.matches("^18: self.signed certificate$", ssl_err)
 
     local error_log = server.read_error_log()
     assert.matches("allow_domain set() called: " .. server.tunnel_hostname, error_log, nil, true)
@@ -169,7 +169,7 @@ describe("sanity", function()
     assert.equal(nil, connect_err)
 
     local _, ssl_err = httpc:ssl_handshake(nil, "not-ours-" .. server.tunnel_hostname, true)
-    assert.equal("18: self-signed certificate", ssl_err)
+    assert.matches("^18: self.signed certificate$", ssl_err)
 
     local error_log = server.read_error_log()
     assert.matches("auto-ssl: issuing new certificate for not-ours-" .. server.tunnel_hostname, error_log, nil, true)
@@ -187,7 +187,7 @@ describe("sanity", function()
     assert.equal(nil, connect_err)
 
     local _, ssl_err = httpc:ssl_handshake(nil, "unresolvable-sdjfklsdjf.example", true)
-    assert.equal("18: self-signed certificate", ssl_err)
+    assert.matches("^18: self.signed certificate$", ssl_err)
 
     local error_log = server.read_error_log()
     assert.matches("auto-ssl: issuing new certificate for unresolvable-sdjfklsdjf.example", error_log, nil, true)
@@ -218,7 +218,7 @@ describe("sanity", function()
     assert.equal(nil, connect_err)
 
     local _, ssl_err = httpc:ssl_handshake(nil, "unresolvable-sdjfklsdjf.example", true)
-    assert.equal("18: self-signed certificate", ssl_err)
+    assert.matches("^18: self.signed certificate$", ssl_err)
 
     local error_log = server.read_error_log()
     assert.matches("auto-ssl: issuing new certificate for unresolvable-sdjfklsdjf.example", error_log, nil, true)
@@ -305,7 +305,7 @@ describe("sanity", function()
       assert.equal(nil, connect_err)
 
       local _, ssl_err = httpc:ssl_handshake(nil, nil, true)
-      assert.equal("18: self-signed certificate", ssl_err)
+      assert.matches("^18: self.signed certificate$", ssl_err)
 
       local error_log = server.nginx_error_log_tail:read()
       assert.Not.matches("auto-ssl: could not determine domain for request (SNI not supported?) - using fallback - ,", error_log, nil, true)
@@ -322,7 +322,7 @@ describe("sanity", function()
       assert.equal(nil, connect_err)
 
       local _, ssl_err = httpc:ssl_handshake(nil, nil, true)
-      assert.equal("18: self-signed certificate", ssl_err)
+      assert.matches("^18: self.signed certificate$", ssl_err)
 
       local error_log = server.nginx_error_log_tail:read()
       assert.Not.matches("auto-ssl: could not determine domain for request (SNI not supported?) - using fallback - ,", error_log, nil, true)
@@ -339,7 +339,7 @@ describe("sanity", function()
       assert.equal(nil, connect_err)
 
       local _, ssl_err = httpc:ssl_handshake(nil, nil, true)
-      assert.equal("18: self-signed certificate", ssl_err)
+      assert.matches("^18: self.signed certificate$", ssl_err)
 
       local error_log = server.nginx_error_log_tail:read()
       assert.matches("auto-ssl: could not determine domain for request (SNI not supported?) - using fallback - ,", error_log, nil, true)
@@ -355,7 +355,7 @@ describe("sanity", function()
       assert.equal(nil, connect_err)
 
       local _, ssl_err = httpc:ssl_handshake(nil, nil, true)
-      assert.equal("18: self-signed certificate", ssl_err)
+      assert.matches("^18: self.signed certificate$", ssl_err)
 
       local error_log = server.nginx_error_log_tail:read()
       assert.Not.matches("auto-ssl: could not determine domain for request (SNI not supported?) - using fallback - ,", error_log, nil, true)
@@ -451,7 +451,7 @@ describe("sanity", function()
       assert.equal(nil, connect_err)
 
       local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
-      assert.equal("18: self-signed certificate", ssl_err)
+      assert.matches("^18: self.signed certificate$", ssl_err)
 
       local error_log = server.nginx_error_log_tail:read()
       assert.matches("auto-ssl: issuing new certificate for", error_log, nil, true)
