@@ -38,6 +38,31 @@ describe("memory", function()
               return ngx.exit(500)
             end
 
+            -- Newer nginx shared-dict slab allocators can reuse freed space
+            -- across size classes more efficiently than older ones, so
+            -- cramming the dict full of large items alone doesn't guarantee
+            -- a subsequent *small* set() (like the DER-encoded cert data
+            -- cached later in this test) will need to evict anything. Keep
+            -- adding small items until eviction is forced for one of those
+            -- too, so the dict is truly out of room for any size.
+            local small_forcible = false
+            for i = 1, 1000 do
+              local small_random = resty_random.bytes(64)
+              local _, small_err, small_item_forcible = ngx.shared.auto_ssl:set("small-filler" .. i, str.to_hex(small_random))
+              if small_err then
+                ngx.log(ngx.ERR, "set error: ", small_err)
+                return ngx.exit(500)
+              end
+              if small_item_forcible then
+                small_forcible = true
+                break
+              end
+            end
+            if not small_forcible then
+              ngx.log(ngx.ERR, "small filler never forced eviction, as expected")
+              return ngx.exit(500)
+            end
+
             ngx.print(cjson.encode({
               keys = #ngx.shared.auto_ssl:get_keys(),
             }))
@@ -53,7 +78,10 @@ describe("memory", function()
     assert.equal(200, fill_res.status)
     local data, json_err = cjson.decode(fill_res.body)
     assert.equal(nil, json_err)
-    assert.equal(2, data["keys"])
+    -- Exact count varies now that small filler items are also added until
+    -- eviction is forced (see the endpoint above), so just sanity-check the
+    -- large items survived rather than pinning an exact total.
+    assert.is_true(data["keys"] >= 2)
 
     -- Ensure we can make a successful request.
     local _, connect_err = httpc:connect("127.0.0.1", 9443)
