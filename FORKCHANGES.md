@@ -46,9 +46,7 @@ PR: [####2](https://github.com/ubmagh/lua-resty-auto-ssl/pull/2)
 
 ---
 
-### Features wave #1
-
-New features planned for upcoming fork releases.
+### Features & cutomizations: wave #1
 
 - **Configurable storage TTLs** — ACME challenge tokens and cached certs can now actually expire in storage instead of persisting indefinitely. Best suited to the Redis storage adapter, since the file adapter's `ngx-timer`-based expiry doesn't hold up for long TTLs (see below). Five related options, and they interact — read all of them before changing any one:
 
