@@ -1,9 +1,8 @@
-FROM openresty/openresty:1.15.8.1-4-centos
+FROM openresty/openresty:1.27.1.2-12-centos
 
 # Runtime dependencies
 RUN yum -y install \
   bash \
-  coreutils \
   curl \
   diffutils \
   grep \
@@ -26,12 +25,15 @@ RUN yum -y install epel-release && \
     procps-ng \
     redis \
     sudo \
-    https://bin.equinox.io/a/6iuHhJeWypm/ngrok-2.3.34-linux-amd64.rpm
+    util-linux && \
+  curl -fsSL -o /usr/local/bin/cloudflared https://github.com/cloudflare/cloudflared/releases/download/2026.7.3/cloudflared-linux-amd64 && \
+  chmod +x /usr/local/bin/cloudflared
 
 RUN mkdir /app
 WORKDIR /app
 
 COPY Makefile /app/Makefile
+RUN git config --global url."https://github.com/".insteadOf git://github.com/
 RUN make install-test-deps
 
 ENV PATH="/tmp/resty-auto-ssl-test-luarocks/bin:${PATH}"

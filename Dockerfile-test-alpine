@@ -1,4 +1,4 @@
-FROM openresty/openresty:1.15.8.2-1-alpine-fat
+FROM openresty/openresty:1.31-alpine-fat
 
 RUN mkdir /app
 WORKDIR /app
@@ -21,19 +21,19 @@ RUN apk add --no-cache \
     findutils \
     gcc \
     git \
+    hexdump \
     lsof \
-    lua \
+    lua5.1 \
     procps \
     redis \
     sudo \
     tzdata \
     wget && \
-  curl -fsSL -o /tmp/ngrok.tar.gz https://bin.equinox.io/a/naDTyS8Kyxv/ngrok-2.3.34-linux-386.tar.gz && \
-  tar -xvf /tmp/ngrok.tar.gz -C /usr/local/bin/ && \
-  rm -f /tmp/ngrok.tar.gz && \
-  chmod +x /usr/local/bin/ngrok
+  curl -fsSL -o /usr/local/bin/cloudflared https://github.com/cloudflare/cloudflared/releases/download/2026.7.3/cloudflared-linux-amd64 && \
+  chmod +x /usr/local/bin/cloudflared
 
 COPY Makefile /app/Makefile
+RUN git config --global url."https://github.com/".insteadOf git://github.com/
 RUN make install-test-deps
 
 ENV PATH="/tmp/resty-auto-ssl-test-luarocks/bin:${PATH}"

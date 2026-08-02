@@ -1,9 +1,18 @@
 FROM openresty/openresty:1.13.6.2-2-centos
 
+RUN sed -i 's/mirror.centos.org/vault.centos.org/g; s/^#.*baseurl=http/baseurl=http/g; s/^mirrorlist=http/#mirrorlist=http/g' /etc/yum.repos.d/*.repo
+
+# This image's CA trust bundle is frozen from 2018 and has no way of knowing
+# about Let's Encrypt's 2025 root rotation, so it can't verify anything signed
+# through that new chain (which is most of the modern internet, including
+# luarocks.org and github.com below). Bootstrap a current bundle instead of
+# disabling verification everywhere: this one fetch is the only insecure step,
+# since even curl.se's own cert chains through the same new root.
+RUN curl -fsSL -k -o /etc/pki/tls/certs/ca-bundle.crt https://curl.se/ca/cacert.pem
+
 # Runtime dependencies
 RUN yum -y install \
   bash \
-  coreutils \
   curl \
   diffutils \
   grep \
@@ -23,12 +32,34 @@ RUN yum -y install epel-release && \
     procps-ng \
     redis \
     sudo \
-    https://bin.equinox.io/a/6iuHhJeWypm/ngrok-2.3.34-linux-amd64.rpm
+    util-linux && \
+  curl -fsSL -o /usr/local/bin/cloudflared https://github.com/cloudflare/cloudflared/releases/download/2026.7.3/cloudflared-linux-amd64 && \
+  chmod +x /usr/local/bin/cloudflared
+
+# The LuaRocks bundled with this old OpenResty release is too old to parse
+# today's (much larger) luarocks.org manifest, so build a current release
+# against the bundled LuaJIT instead.
+RUN curl -fsSL -o /tmp/luarocks.tar.gz https://luarocks.org/releases/luarocks-3.13.0.tar.gz && \
+  tar -xzf /tmp/luarocks.tar.gz -C /tmp && \
+  cd /tmp/luarocks-3.13.0 && \
+  ./configure \
+    --prefix=/usr/local/openresty/luajit \
+    --with-lua=/usr/local/openresty/luajit \
+    --lua-suffix=jit \
+    --with-lua-include=/usr/local/openresty/luajit/include/luajit-2.1 && \
+  make build && \
+  make install && \
+  cd / && rm -rf /tmp/luarocks-3.13.0 /tmp/luarocks.tar.gz
+
+# This image's GCC defaults to gnu89, which rejects the C99-style for-loop
+# declarations used by some rocks (e.g. luasystem, a busted dependency).
+RUN luarocks config -- variables.CFLAGS "-O2 -fPIC -std=gnu99"
 
 RUN mkdir /app
 WORKDIR /app
 
 COPY Makefile /app/Makefile
+RUN git config --global url."https://github.com/".insteadOf git://github.com/
 RUN make install-test-deps
 
 ENV PATH="/tmp/resty-auto-ssl-test-luarocks/bin:${PATH}"

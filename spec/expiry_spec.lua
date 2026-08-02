@@ -15,7 +15,7 @@ describe("expiry", function()
     local _, connect_err = httpc:connect("127.0.0.1", 9443)
     assert.equal(nil, connect_err)
 
-    local _, ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, true)
+    local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
     assert.equal(nil, ssl_err)
 
     local res, request_err = httpc:request({ path = "/foo" })
@@ -27,11 +27,11 @@ describe("expiry", function()
     assert.equal("foo", body)
 
     local error_log = server.nginx_error_log_tail:read()
-    assert.matches("issuing new certificate for " .. server.ngrok_hostname, error_log, nil, true)
-    assert.Not.matches("auto-ssl: checking certificate renewals for " .. server.ngrok_hostname, error_log, nil, true)
+    assert.matches("issuing new certificate for " .. server.tunnel_hostname, error_log, nil, true)
+    assert.Not.matches("auto-ssl: checking certificate renewals for " .. server.tunnel_hostname, error_log, nil, true)
     assert.Not.matches("failed to get the expiry date", error_log, nil, true)
 
-    local cert_path = server.current_test_dir .. "/auto-ssl/storage/file/" .. ngx.escape_uri(server.ngrok_hostname .. ":latest")
+    local cert_path = server.current_test_dir .. "/auto-ssl/storage/file/" .. ngx.escape_uri(server.tunnel_hostname .. ":latest")
     local content = assert(file.read(cert_path))
     assert.string(content)
     local data = assert(cjson.decode(content))
@@ -50,7 +50,7 @@ describe("expiry", function()
     local _, connect_err = httpc:connect("127.0.0.1", 9443)
     assert.equal(nil, connect_err)
 
-    local _, ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, true)
+    local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
     assert.equal(nil, ssl_err)
 
     local res, request_err = httpc:request({ path = "/foo" })
@@ -64,7 +64,7 @@ describe("expiry", function()
     local error_log = server.nginx_error_log_tail:read()
     assert.matches("issuing new certificate for", error_log, nil, true)
 
-    local cert_path = server.current_test_dir .. "/auto-ssl/storage/file/" .. ngx.escape_uri(server.ngrok_hostname .. ":latest")
+    local cert_path = server.current_test_dir .. "/auto-ssl/storage/file/" .. ngx.escape_uri(server.tunnel_hostname .. ":latest")
     local content = assert(file.read(cert_path))
     assert.string(content)
     local data = assert(cjson.decode(content))
@@ -81,9 +81,9 @@ describe("expiry", function()
     ngx.sleep(3)
 
     error_log = server.nginx_error_log_tail:read()
-    assert.matches("auto-ssl: checking certificate renewals for " .. server.ngrok_hostname, error_log, nil, true)
-    assert.matches("auto-ssl: setting expiration date of " .. server.ngrok_hostname, error_log, nil, true)
-    assert.matches("auto-ssl: expiry date is more than 30 days out, skipping renewal: " .. server.ngrok_hostname, error_log, nil, true)
+    assert.matches("auto-ssl: checking certificate renewals for " .. server.tunnel_hostname, error_log, nil, true)
+    assert.matches("auto-ssl: setting expiration date of " .. server.tunnel_hostname, error_log, nil, true)
+    assert.matches("auto-ssl: expiry date is more than 30 days out, skipping renewal: " .. server.tunnel_hostname, error_log, nil, true)
 
     content = assert(file.read(cert_path))
     assert.string(content)
@@ -109,7 +109,7 @@ describe("expiry", function()
     local _, connect_err = httpc:connect("127.0.0.1", 9443)
     assert.equal(nil, connect_err)
 
-    local _, ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, true)
+    local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
     assert.equal(nil, ssl_err)
 
     local res, request_err = httpc:request({ path = "/foo" })
@@ -123,7 +123,7 @@ describe("expiry", function()
     local error_log = server.nginx_error_log_tail:read()
     assert.matches("issuing new certificate for", error_log, nil, true)
 
-    local cert_path = server.current_test_dir .. "/auto-ssl/storage/file/" .. ngx.escape_uri(server.ngrok_hostname .. ":latest")
+    local cert_path = server.current_test_dir .. "/auto-ssl/storage/file/" .. ngx.escape_uri(server.tunnel_hostname .. ":latest")
     local content = assert(file.read(cert_path))
     assert.string(content)
     local data = assert(cjson.decode(content))
@@ -138,7 +138,7 @@ describe("expiry", function()
     ngx.sleep(3)
 
     error_log = server.nginx_error_log_tail:read()
-    assert.matches("auto-ssl: checking certificate renewals for " .. server.ngrok_hostname, error_log, nil, true)
+    assert.matches("auto-ssl: checking certificate renewals for " .. server.tunnel_hostname, error_log, nil, true)
     assert.matches("Skipping renew!", error_log, nil, true)
 
     -- Since this cert renewal is still valid, it should still remain despite
@@ -158,7 +158,7 @@ describe("expiry", function()
     ngx.sleep(5)
 
     error_log = server.nginx_error_log_tail:read()
-    assert.matches("auto-ssl: checking certificate renewals for " .. server.ngrok_hostname, error_log, nil, true)
+    assert.matches("auto-ssl: checking certificate renewals for " .. server.tunnel_hostname, error_log, nil, true)
     assert.matches("Skipping renew!", error_log, nil, true)
     assert.matches("auto-ssl: checking certificate renewals for unresolvable-sdjfklsdjf.example", error_log, nil, true)
     assert.matches("Ignoring because renew was forced!", error_log, nil, true)
@@ -204,7 +204,7 @@ describe("expiry", function()
       local _, connect_err = httpc:connect("127.0.0.1", 9443)
       assert.equal(nil, connect_err)
 
-      local _, ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, true)
+      local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
       assert.equal(nil, ssl_err)
 
       local res, request_err = httpc:request({ path = "/foo" })
@@ -221,7 +221,7 @@ describe("expiry", function()
 
     -- Copy the cert to a disallowed domain to verify first that non-expired
     -- disallowed certs remain.
-    local cert_path = server.current_test_dir .. "/auto-ssl/storage/file/" .. ngx.escape_uri(server.ngrok_hostname .. ":latest")
+    local cert_path = server.current_test_dir .. "/auto-ssl/storage/file/" .. ngx.escape_uri(server.tunnel_hostname .. ":latest")
     local disallowed_cert_path = server.current_test_dir .. "/auto-ssl/storage/file/" .. ngx.escape_uri("disallowed.example:latest")
     local _, cp_err = shell_blocking.capture_combined({ "cp", "-p", cert_path, disallowed_cert_path })
     assert.equal(nil, cp_err)

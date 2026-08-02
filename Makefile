@@ -1,9 +1,9 @@
 ROOT_DIR:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 BUILD_DIR?=$(ROOT_DIR)/build
 
-DEHYDRATED_VERSION:=05eda91a2fbaed1e13c733230238fc68475c535e
+DEHYDRATED_VERSION:=48866b0e85b474e3971d6425a14212608c355c1c
 LUA_RESTY_SHELL_VERSION:=955243d70506c21e7cc29f61d745d1a8a718994f
-SOCKPROC_VERSION:=92aba736027bb5d96e190b71555857ac5bb6b2be
+SOCKPROC_VERSION:=8656bbda08271e637017b2540e9d3dd7cd107284
 
 RUNTIME_DEPENDENCIES:=bash curl cut date diff grep mktemp openssl sed
 
@@ -78,7 +78,7 @@ $(BUILD_DIR)/stamp-lua-resty-shell-$(LUA_RESTY_SHELL_VERSION): | $(BUILD_DIR)
 $(BUILD_DIR)/stamp-sockproc-2-$(SOCKPROC_VERSION): | $(BUILD_DIR)
 	rm -f $(BUILD_DIR)/stamp-sockproc-*
 	mkdir -p $(BUILD_DIR)/bin
-	cd $(BUILD_DIR) && curl -sSLo sockproc-$(SOCKPROC_VERSION).tar.gz "https://github.com/juce/sockproc/archive/$(SOCKPROC_VERSION).tar.gz"
+	cd $(BUILD_DIR) && curl -sSLo sockproc-$(SOCKPROC_VERSION).tar.gz "https://github.com/communiteq/sockproc/archive/$(SOCKPROC_VERSION).tar.gz"
 	cd $(BUILD_DIR) && tar -xf sockproc-$(SOCKPROC_VERSION).tar.gz
 	cd $(BUILD_DIR)/sockproc-$(SOCKPROC_VERSION) && make
 	cp $(BUILD_DIR)/sockproc-$(SOCKPROC_VERSION)/sockproc $(BUILD_DIR)/bin/sockproc

@@ -16,14 +16,14 @@ local _M = {}
 
 _M.nginx_process = nil
 _M.nginx_error_log_tail = nil
-_M.ngrok_process = nil
-_M.ngrok_hostname = nil
+_M.tunnel_process = nil
+_M.tunnel_hostname = nil
 _M.redis_process = nil
 
 _M.root_dir = path.dirname(path.dirname(path.dirname(path.abspath(debug.getinfo(1, "S").short_src))))
 _M.dehydrated_persist_accounts_dir = _M.root_dir .. "/spec/tmp/dehydrated-accounts"
 _M.test_dir = "/tmp/resty-auto-ssl-test"
-_M.ngrok_test_dir = _M.test_dir .. "/ngrok"
+_M.tunnel_test_dir = _M.test_dir .. "/tunnel"
 _M.redis_test_dir = _M.test_dir .. "/redis"
 _M.tests_test_dir = _M.test_dir .. "/tests"
 _M.test_counter = 0
@@ -46,31 +46,31 @@ local function kill(proc)
   proc:kill(9)
 end
 
-local function start_ngrok()
-  if not _M.ngrok_hostname then
-    assert(dir.makepath(_M.ngrok_test_dir))
-    local ngrok_process, exec_err = process.exec("ngrok", { "http", "9080", "--log", _M.ngrok_test_dir .. "/ngrok.log", "--log-format", "logfmt", "--log-level", "debug" })
+local function start_tunnel()
+  if not _M.tunnel_hostname then
+    assert(dir.makepath(_M.tunnel_test_dir))
+    local tunnel_process, exec_err = process.exec("cloudflared", { "tunnel", "--url", "http://127.0.0.1:9080", "--logfile", _M.tunnel_test_dir .. "/cloudflared.log", "--loglevel", "info" })
     assert(not exec_err, exec_err)
-    _M.ngrok_process = ngrok_process
+    _M.tunnel_process = tunnel_process
 
-    local log = log_tail.new(_M.ngrok_test_dir .. "/ngrok.log")
-    local ok, output = log:read_until("start tunnel listen.*Hostname:[a-z0-9]+.ngrok.io")
+    local log = log_tail.new(_M.tunnel_test_dir .. "/cloudflared.log")
+    local ok, output = log:read_until("https://[a-z0-9-]+\\.trycloudflare\\.com", "jo", 15)
     if not ok then
-      print(ngrok_process:stdout())
-      print(ngrok_process:stderr())
-      local log_content, log_content_err = file.read(_M.ngrok_test_dir .. "/ngrok.log")
+      print(tunnel_process:stdout())
+      print(tunnel_process:stderr())
+      local log_content, log_content_err = file.read(_M.tunnel_test_dir .. "/cloudflared.log")
       if log_content then
         print(log_content)
       elseif log_content_err then
         print(log_content_err)
       end
 
-      error("ngrok did not startup as expected")
+      error("cloudflared did not startup as expected")
     end
 
-    local matches, match_err = ngx.re.match(output, "Hostname:([a-z0-9]+.ngrok.io)", "jo")
+    local matches, match_err = ngx.re.match(output, "https://([a-z0-9-]+\\.trycloudflare\\.com)", "jo")
     assert(not match_err, match_err)
-    _M.ngrok_hostname = matches[1]
+    _M.tunnel_hostname = matches[1]
   end
 end
 
@@ -117,8 +117,8 @@ local function exit_handler()
     kill(_M.nginx_process)
   end
 
-  if _M.ngrok_process then
-    kill(_M.ngrok_process)
+  if _M.tunnel_process then
+    kill(_M.tunnel_process)
   end
 
   if _M.redis_process then
@@ -159,7 +159,7 @@ function _M.start(options)
     _M.started_once = true
   end
 
-  start_ngrok()
+  start_tunnel()
   start_redis()
   _M.stop_sockproc()
 

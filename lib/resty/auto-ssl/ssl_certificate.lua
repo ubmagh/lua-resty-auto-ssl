@@ -1,4 +1,3 @@
-local http = require "resty.http"
 local lock = require "resty.lock"
 local ssl = require "ngx.ssl"
 local ssl_provider = require "resty.auto-ssl.ssl_providers.lets_encrypt"
@@ -139,7 +138,7 @@ local function get_cert_der(auto_ssl_instance, domain, ssl_options)
     if cert_der_err then
       ngx.log(ngx.ERR, "auto-ssl: error converting certificate for ", domain, ": ", cert_der_err)
     end
-    
+
     if not cert_der then
       return nil, "empty cert_der received"
     end
@@ -156,7 +155,7 @@ local function get_cert_der(auto_ssl_instance, domain, ssl_options)
       if cert_der_err then
         ngx.log(ngx.ERR, "auto-ssl: error converting certificate for ", domain, ": ", cert_der_err)
       end
-      
+
       if not cert_der then
         return nil, "empty cert_der received"
       end
@@ -172,7 +171,7 @@ local function get_cert_der(auto_ssl_instance, domain, ssl_options)
   return nil, "failed to get or issue certificate"
 end
 
-local function set_response_cert(auto_ssl_instance, domain, cert_der)
+local function set_response_cert(cert_der)
   local ok, err
 
   -- Clear the default fallback certificates (defined in the hard-coded nginx
@@ -219,7 +218,7 @@ local function do_ssl(auto_ssl_instance, ssl_options)
   end
 
   -- Set the certificate on the response.
-  local _, set_response_cert_err = set_response_cert(auto_ssl_instance, domain, cert_der)
+  local _, set_response_cert_err = set_response_cert(cert_der)
   if set_response_cert_err then
     ngx.log(ngx.ERR, "auto-ssl: failed to set certificate for ", domain, " - using fallback - ", set_response_cert_err)
     return

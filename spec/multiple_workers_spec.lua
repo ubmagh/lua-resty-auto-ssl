@@ -1,13 +1,24 @@
 local http = require "resty.http"
 local server = require "spec.support.server"
 
+-- This test has occasionally dropped a small fraction of its 1000 requests
+-- under the free Cloudflare Tunnel (which is explicitly best-effort, no
+-- uptime guarantee) rather than every run. The ngx.log calls below are kept
+-- intentionally so a recurrence surfaces the actual failing step and error
+-- in the CI log artifact, instead of just the generic count mismatch.
 local function make_http_requests()
   local httpc = http.new()
 
   local _, connect_err = httpc:connect("127.0.0.1", 9443)
+  if connect_err then
+    ngx.log(ngx.ERR, "auto-ssl test debug: connect failed: ", connect_err)
+  end
   assert.equal(nil, connect_err)
 
-  local _, ssl_err = httpc:ssl_handshake(nil, server.ngrok_hostname, true)
+  local _, ssl_err = httpc:ssl_handshake(nil, server.tunnel_hostname, true)
+  if ssl_err then
+    ngx.log(ngx.ERR, "auto-ssl test debug: ssl_handshake failed: ", ssl_err)
+  end
   assert.equal(nil, ssl_err)
 
   -- Make pipelined requests on this connection to test behavior across
@@ -20,13 +31,25 @@ local function make_http_requests()
   end
 
   local responses, request_err = httpc:request_pipeline(requests)
+  if request_err then
+    ngx.log(ngx.ERR, "auto-ssl test debug: request_pipeline failed: ", request_err)
+  end
   assert.equal(nil, request_err)
 
   for _, res in ipairs(responses) do
+    if res.status ~= 200 then
+      ngx.log(ngx.ERR, "auto-ssl test debug: unexpected status: ", res.status)
+    end
     assert.equal(200, res.status)
 
     local body, body_err = res:read_body()
+    if body_err then
+      ngx.log(ngx.ERR, "auto-ssl test debug: read_body failed: ", body_err)
+    end
     assert.equal(nil, body_err)
+    if body ~= "foo" then
+      ngx.log(ngx.ERR, "auto-ssl test debug: unexpected body: ", tostring(body))
+    end
     assert.equal("foo", body)
 
     -- Keep track of the total number of successful requests across all

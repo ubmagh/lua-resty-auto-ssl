@@ -12,7 +12,7 @@ on:
 
 jobs:
   test:
-    runs-on: [self-hosted, Linux, AMD64]
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -34,7 +34,7 @@ jobs:
         if: always()
         run: |
           rm -rf /tmp/resty-auto-ssl-test
-          docker cp ${{ matrix.variant }}-test:/tmp/resty-auto-ssl-test /tmp/resty-auto-ssl-test
+          docker cp "${{ matrix.variant }}-test":/tmp/resty-auto-ssl-test /tmp/resty-auto-ssl-test
       - name: Upload Artifacts
         if: always()
         uses: actions/upload-artifact@v4
