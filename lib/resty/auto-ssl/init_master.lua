@@ -109,6 +109,8 @@ local function setup_storage(auto_ssl_instance)
     ssl_certs_keys_expire_mode = auto_ssl_instance:get("ssl_certs_keys_expire_mode"),
     challenge_keys_exptime = auto_ssl_instance:get("challenge_keys_exptime"),
     ssl_certs_keys_exptime = auto_ssl_instance:get("ssl_certs_keys_exptime"),
+    renew_offset_ssl_certs_exptime = auto_ssl_instance:get("renew_offset_ssl_certs_exptime"),
+    min_ssl_certs_exptime = auto_ssl_instance:get("min_ssl_certs_exptime"),
   })
   auto_ssl_instance.storage = storage_instance
 end

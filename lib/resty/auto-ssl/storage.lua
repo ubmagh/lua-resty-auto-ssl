@@ -61,13 +61,25 @@ function _M.set_cert(self, domain, fullchain_pem, privkey_pem, cert_pem, expiry)
             return {}
           end,
     [1]= function () -- use the configured TTL
-           return { exptime = self.ssl_certs_keys_exptime }
+            local exptime = self.ssl_certs_keys_exptime - self.renew_offset_ssl_certs_exptime
+            if exptime < 0 then
+              exptime = self.min_ssl_certs_exptime
+            end
+           return { exptime = exptime }
           end,
     [2]= function () -- use the expiry of the cert as TTL
             if not expiry then
-              return { exptime = self.ssl_certs_keys_exptime }
+              local exptime = self.ssl_certs_keys_exptime - self.renew_offset_ssl_certs_exptime
+              if exptime < 0 then
+                exptime = self.min_ssl_certs_exptime
+              end
+              return { exptime = exptime }
             end
-            return { exptime = tonumber(expiry) - ngx.time() + 60 } -- add 60 seconds of tolerance
+            local exptime = tonumber(expiry) - ngx.time() - self.renew_offset_ssl_certs_exptime
+            if exptime < 0 then
+              exptime = self.min_ssl_certs_exptime
+            end
+            return { exptime = exptime }
           end
   }
   

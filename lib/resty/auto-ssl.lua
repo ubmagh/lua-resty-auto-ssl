@@ -65,6 +65,14 @@ function _M.new(options)
     options["ssl_certs_keys_exptime"] = 7776000 -- 90 days default
   end
 
+  if not options["renew_offset_ssl_certs_exptime"] then
+    options["renew_offset_ssl_certs_exptime"] = 86400 -- 1 day
+  end
+
+  if not options["min_ssl_certs_exptime"] then
+    options["min_ssl_certs_exptime"] = 86400 -- 1 day
+  end
+
   return setmetatable({ options = options }, { __index = _M })
 end
 
