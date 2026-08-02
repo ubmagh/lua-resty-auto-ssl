@@ -2,6 +2,14 @@ FROM openresty/openresty:1.13.6.2-2-centos
 
 RUN sed -i 's/mirror.centos.org/vault.centos.org/g; s/^#.*baseurl=http/baseurl=http/g; s/^mirrorlist=http/#mirrorlist=http/g' /etc/yum.repos.d/*.repo
 
+# This image's CA trust bundle is frozen from 2018 and has no way of knowing
+# about Let's Encrypt's 2025 root rotation, so it can't verify anything signed
+# through that new chain (which is most of the modern internet, including
+# luarocks.org and github.com below). Bootstrap a current bundle instead of
+# disabling verification everywhere: this one fetch is the only insecure step,
+# since even curl.se's own cert chains through the same new root.
+RUN curl -fsSL -k -o /etc/pki/tls/certs/ca-bundle.crt https://curl.se/ca/cacert.pem
+
 # Runtime dependencies
 RUN yum -y install \
   bash \
@@ -23,9 +31,10 @@ RUN yum -y install epel-release && \
     lua \
     procps-ng \
     redis \
-    sudo && \
-  curl -fsSL https://pkg.cloudflare.com/cloudflared-ascii.repo -o /etc/yum.repos.d/cloudflared.repo && \
-  yum -y install cloudflared
+    sudo \
+    util-linux && \
+  curl -fsSL -o /usr/local/bin/cloudflared https://github.com/cloudflare/cloudflared/releases/download/2026.7.3/cloudflared-linux-amd64 && \
+  chmod +x /usr/local/bin/cloudflared
 
 # The LuaRocks bundled with this old OpenResty release is too old to parse
 # today's (much larger) luarocks.org manifest, so build a current release

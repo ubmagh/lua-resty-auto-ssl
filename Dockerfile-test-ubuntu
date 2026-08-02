@@ -19,16 +19,15 @@ RUN apt-get update && \
 # Test dependencies
 RUN apt-get update && \
   apt-get -y install \
+    bsdextrautils \
     git \
     lsof \
     lua5.2 \
     redis-server \
     sudo \
     tzdata && \
-  curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o /usr/share/keyrings/cloudflare-main.gpg && \
-  echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared jammy main" | tee /etc/apt/sources.list.d/cloudflared.list && \
-  apt-get update && \
-  apt-get -y install cloudflared
+  curl -fsSL -o /usr/local/bin/cloudflared https://github.com/cloudflare/cloudflared/releases/download/2026.7.3/cloudflared-linux-amd64 && \
+  chmod +x /usr/local/bin/cloudflared
 
 RUN mkdir /app
 WORKDIR /app
