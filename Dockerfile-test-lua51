@@ -57,7 +57,7 @@ RUN curl -fsSL -o /tmp/luarocks.tar.gz https://luarocks.org/releases/luarocks-3.
 
 # This image's GCC defaults to gnu89, which rejects the C99-style for-loop
 # declarations used by some rocks (e.g. luasystem, a busted dependency).
-RUN luarocks config variables.CFLAGS "-O2 -fPIC -std=gnu99"
+RUN luarocks config -- variables.CFLAGS "-O2 -fPIC -std=gnu99"
 
 RUN mkdir /app
 WORKDIR /app
