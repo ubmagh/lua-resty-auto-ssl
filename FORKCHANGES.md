@@ -46,3 +46,17 @@ PR: [####2](https://github.com/ubmagh/lua-resty-auto-ssl/pull/2)
 
 ---
 
+### Features wave #1
+
+New features planned for upcoming fork releases.
+
+- **Configurable storage TTLs** — new `challenge_keys_exptime` (default 1h) and `ssl_certs_keys_exptime` (default 90 days) options, so ACME challenge tokens and cached certs actually expire in storage instead of persisting indefinitely. Best suited to the Redis storage adapter, since the file adapter's `ngx-timer`-based expiry doesn't hold up for long TTLs. Set `ssl_certs_keys_exptime` to match your CA's certificate lifetime (90 days by default, matching Let's Encrypt's) so cached certs get cleaned up automatically right around when they'd expire anyway.
+
+  ```lua
+  auto_ssl:set("challenge_keys_exptime", 3600)     -- 1 hour
+  auto_ssl:set("ssl_certs_keys_exptime", 7776000)  -- 90 days
+  ```
+
+PR: _(link once opened)_
+
+

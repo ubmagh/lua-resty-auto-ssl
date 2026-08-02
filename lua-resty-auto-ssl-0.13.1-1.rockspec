@@ -1,13 +1,13 @@
 package = "lua-resty-auto-ssl"
 version = "0.13.1-1"
 source = {
-  url = "git://github.com/GUI/lua-resty-auto-ssl.git",
+  url = "git://github.com/ubmagh/lua-resty-auto-ssl.git",
   tag = "v0.13.1",
 }
 description = {
-  summary = "Automatic SSL handling for OpenResty",
+  summary = "[forked] Automatic SSL handling for OpenResty",
   detailed = "On the fly (and free) SSL registration and renewal inside OpenResty/nginx with Let's Encrypt.",
-  homepage = "https://github.com/GUI/lua-resty-auto-ssl",
+  homepage = "https://github.com/ubmagh/lua-resty-auto-ssl",
   license = "MIT",
 }
 dependencies = {
