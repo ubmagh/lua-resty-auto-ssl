@@ -64,6 +64,7 @@ function _M.set_cert(self, domain, fullchain_pem, privkey_pem, cert_pem, expiry)
             local exptime = self.ssl_certs_keys_exptime - self.renew_offset_ssl_certs_exptime
             if exptime < 0 then
               exptime = self.min_ssl_certs_exptime
+              ngx.log(ngx.ERR, "auto-ssl-debug: falling back to minimum expiry time, mode: 1 for domain: "..domain)
             end
            return { exptime = exptime }
           end,
@@ -72,12 +73,14 @@ function _M.set_cert(self, domain, fullchain_pem, privkey_pem, cert_pem, expiry)
               local exptime = self.ssl_certs_keys_exptime - self.renew_offset_ssl_certs_exptime
               if exptime < 0 then
                 exptime = self.min_ssl_certs_exptime
+                ngx.log(ngx.ERR, "auto-ssl-debug: falling back to minimum expiry time, mode: 2 for domain: "..domain)
               end
               return { exptime = exptime }
             end
             local exptime = tonumber(expiry) - ngx.time() - self.renew_offset_ssl_certs_exptime
             if exptime < 0 then
               exptime = self.min_ssl_certs_exptime
+              ngx.log(ngx.ERR, "auto-ssl-debug: falling back to minimum expiry time, mode: 2 for domain: "..domain)
             end
             return { exptime = exptime }
           end

@@ -162,6 +162,7 @@ local function renew_check_cert(auto_ssl_instance, storage, domain)
 
   -- Write out the cert.pem value to the location dehydrated expects it for
   -- checking.
+  ngx.log(ngx.ERR, "auto-ssl-debug: running into the renewal of :  "..domain.." expiry_field: "..ngx.http_time(cert["expiry"]))
   local dir = auto_ssl_instance:get("dir") .. "/letsencrypt/certs/" .. domain
   local _, mkdir_err = shell_blocking.capture_combined({ "mkdir", "-p", dir }, { umask = "0022" })
   if mkdir_err then
@@ -203,16 +204,21 @@ local function renew_all_domains(auto_ssl_instance)
     -- each time (which may allow things to eventually succeed over multiple
     -- renewal attempts).
     shuffle_table(domains)
-
+    ngx.log(ngx.ERR, "auto-ssl-debug: started renewing all domains at: "..tostring(ngx.time())  )
+    local domains_counter = 0
     for _, domain in ipairs(domains) do
+      domains_counter = domains_counter + 1
+      ngx.log(ngx.ERR, "auto-ssl-debug: Domain-counter index is at -> "..tostring(domains_counter)  )
       renew_check_cert(auto_ssl_instance, storage, string.lower(domain))
     end
+    ngx.log(ngx.ERR, "auto-ssl-debug: endof renewing all domains at: "..tostring(ngx.time()) )
   end
 end
 
 local function do_renew(auto_ssl_instance)
   -- Ensure only 1 worker executes the renewal once per interval.
   if not get_interval_lock("renew", auto_ssl_instance:get("renew_check_interval")) then
+    ngx.log(ngx.ERR, "auto-ssl-debug: can't launch renew, state is locked for another worker " )
     return
   end
   local renew_lock, new_renew_lock_err = lock:new("auto_ssl_settings", { exptime = 1800, timeout = 0 })
