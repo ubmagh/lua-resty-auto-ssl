@@ -251,7 +251,7 @@ describe("expiry", function()
     error_log = server.nginx_error_log_tail:read()
     assert.matches("checking certificate renewals for disallowed.example", error_log, nil, true)
     assert.matches("domain not allowed, not renewing: disallowed.example", error_log, nil, true)
-    assert.matches(" auto-ssl: existing certificate is expired, deleting: disallowed.example", error_log, nil, true)
+    assert.matches("existing certificate is expired, deleting: disallowed.example", error_log, nil, true)
 
     local file_content, file_err = file.read(disallowed_cert_path)
     assert.equal(nil, file_content)
