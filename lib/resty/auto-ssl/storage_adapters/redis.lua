@@ -35,11 +35,16 @@ function _M.get_connection(self)
   local ok, err
 
   local connect_options = self.options["connect_options"] or {}
-  if self.options["timeouts"] then
-    local timeouts = self.options["timeouts"]
+  local timeouts = self.options["timeouts"] or { conn = 3000, send = 3000, read = 3000 }
+  if connection.set_timeouts then
     connection:set_timeouts(timeouts["conn"], timeouts["send"], timeouts["read"])
   else
-    connection:set_timeouts(3000, 3000, 3000)
+    -- set_timeouts() (plural, separate connect/send/read timeouts) was only
+    -- added to lua-resty-redis in v0.28 (2020); the openresty1.13/lua51 test
+    -- images bundle 0.25/0.26, which only have the older, single-value
+    -- set_timeout(ms). Fall back to the largest of the three configured
+    -- values there, so no operation times out earlier than intended.
+    connection:set_timeout(math.max(timeouts["conn"], timeouts["send"], timeouts["read"]))
   end
 
   if self.options["socket"] then
