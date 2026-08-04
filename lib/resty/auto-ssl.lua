@@ -73,6 +73,10 @@ function _M.new(options)
     options["min_ssl_certs_exptime"] = 86400 -- 1 day
   end
 
+  if not options["renew_age_days"] then
+    options["renew_age_days"] = 30 -- 30 days default
+  end
+  
   return setmetatable({ options = options }, { __index = _M })
 end
 

@@ -87,6 +87,12 @@ PR: [####2](https://github.com/ubmagh/lua-resty-auto-ssl/pull/2)
   })
   ```
 
+- **Configurable renewal threshold** — new `renew_age_days` option (default `30`, matching the previous hardcoded behavior) controls how close to expiry a cert needs to be before the renewal job renews it, instead of that window being fixed at 30 days. Takes a plain day count, converted to seconds where it's actually used — unlike the `_exptime`/`_ssl_certs_exptime` options above, which all take raw seconds.
+
+  ```lua
+  auto_ssl:set("renew_age_days", 30) -- renew once a cert is within this many days of expiring
+  ```
+
 PR: [####3](https://github.com/ubmagh/lua-resty-auto-ssl/pull/3)
 
 
