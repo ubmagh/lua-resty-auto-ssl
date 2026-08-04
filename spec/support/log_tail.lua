@@ -20,7 +20,7 @@ function _M.read(self)
     -- because they indicate a real problem). Strip them here so the many
     -- "no unexpected [error]/[warn]/etc." assertions across the spec suite
     -- don't have to special-case them individually.
-    output = ngx.re.gsub(output, [[^[^\n]*\[auto-ssl\]\[[^\]]*-debug\][^\n]*\n?]], "", "jom")
+    output = ngx.re.gsub(output, [=[^[^\n]*\[auto-ssl\]\[[^\]]*-debug\][^\n]*\n?]=], "", "jom")
   end
 
   return output
