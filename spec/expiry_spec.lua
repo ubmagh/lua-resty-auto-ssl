@@ -83,7 +83,7 @@ describe("expiry", function()
     error_log = server.nginx_error_log_tail:read()
     assert.matches("checking certificate renewals for " .. server.tunnel_hostname, error_log, nil, true)
     assert.matches("setting expiration date of " .. server.tunnel_hostname, error_log, nil, true)
-    assert.matches("expiry date is more than 30 days out, skipping renewal: " .. server.tunnel_hostname, error_log, nil, true)
+    assert.matches("expiry date is more than configured `renew_age_days` days out, skipping renewal: " .. server.tunnel_hostname, error_log, nil, true)
 
     content = assert(file.read(cert_path))
     assert.string(content)
@@ -231,7 +231,7 @@ describe("expiry", function()
 
     local error_log = server.nginx_error_log_tail:read()
     assert.matches("checking certificate renewals for disallowed.example", error_log, nil, true)
-    assert.matches("expiry date is more than 30 days out, skipping renewal: disallowed.example", error_log, nil, true)
+    assert.matches("expiry date is more than configured `renew_age_days` days out, skipping renewal: disallowed.example", error_log, nil, true)
 
     local content = assert(file.read(disallowed_cert_path))
     assert.string(content)

@@ -48,7 +48,7 @@ describe("file", function()
     -- we're at least sure that the renewal was fired.
     error_log = server.nginx_error_log_tail:read()
     assert.matches("checking certificate renewals for", error_log, nil, true)
-    assert.matches("expiry date is more than 30 days out", error_log, nil, true)
+    assert.matches("expiry date is more than configured `renew_age_days` days out", error_log, nil, true)
 
     -- Next, ensure that that we're still able to access things using the
     -- existing certificate even after the renewal was triggered.
