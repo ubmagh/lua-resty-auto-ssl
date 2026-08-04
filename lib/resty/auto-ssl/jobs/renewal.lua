@@ -219,7 +219,7 @@ end
 local function do_renew(auto_ssl_instance)
   -- Ensure only 1 worker executes the renewal once per interval.
   if not get_interval_lock("renew", auto_ssl_instance:get("renew_check_interval")) then
-    ngx.log(ngx.ERR, "auto-ssl-debug: can't launch renew, state is locked for another worker " )
+    ngx.log(ngx.ERR, "auto-ssl-debug: can't launch renew, renewal-state is locked for another worker for the renew_check_interval duration")
     return
   end
   local renew_lock, new_renew_lock_err = lock:new("auto_ssl_settings", { exptime = 1800, timeout = 0 })
@@ -248,6 +248,12 @@ end
 local function renew(premature, auto_ssl_instance)
   if premature then return end
 
+  local enable_internal_renew_schedule = auto_ssl_instance:get("enable_internal_renew_schedule")
+  if not enable_internal_renew_schedule then
+    ngx.log(ngx.ERR, "auto-ssl: stopping the internal renewal recursiv schedul; set enable_internal_renew_schedule to true to enable it")
+    return
+  end
+
   local renew_ok, renew_err = pcall(do_renew, auto_ssl_instance)
   if not renew_ok then
     ngx.log(ngx.ERR, "auto-ssl: failed to run do_renew cycle: ", renew_err)
@@ -269,5 +275,8 @@ function _M.spawn(auto_ssl_instance)
     return
   end
 end
+
+-- exposed function to be called from the api vhost, for manual triggered renewals
+_M.do_renew = do_renew
 
 return _M

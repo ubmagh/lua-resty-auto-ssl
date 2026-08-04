@@ -45,6 +45,10 @@ function _M.new(options)
     options["json_adapter"] = "resty.auto-ssl.json_adapters.cjson"
   end
 
+  if not options["enable_internal_renew_schedule"] then
+    options["enable_internal_renew_schedule"] = true -- if u don't have an external triggering system
+  end
+
   if not options["renew_check_interval"] then
     options["renew_check_interval"] = 86400 -- 1 day
   end
@@ -77,7 +81,9 @@ function _M.new(options)
     options["renew_age_days"] = 30 -- 30 days default
   end
   
-  return setmetatable({ options = options }, { __index = _M })
+  local self =  setmetatable({ options = options }, { __index = _M })
+  _M.singleton_instance = self
+  return self
 end
 
 function _M.set(self, key, value)

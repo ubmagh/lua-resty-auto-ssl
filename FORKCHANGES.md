@@ -93,6 +93,21 @@ PR: [####2](https://github.com/ubmagh/lua-resty-auto-ssl/pull/2)
   auto_ssl:set("renew_age_days", 30) -- renew once a cert is within this many days of expiring
   ```
 
+- **Manually-triggerable renewal, and an option to disable the internal schedule** — `renewal.lua`'s renewal cycle is now exposed as `require("resty.auto-ssl.jobs.renewal").do_renew(auto_ssl_instance)`, so it can be called on demand (e.g. from a vhost endpoint), instead of only ever running on `auto_ssl`'s own internal recursive timer. New `enable_internal_renew_schedule` option (default `true`) lets that internal timer be turned off entirely for setups that want to drive renewal purely through their own external trigger (cron, admin endpoint, etc.).
+
+  Important: manual and internal-scheduled renewals share the *same* rate-limiting lock, held for `renew_check_interval` (default 1 day) regardless of which one acquired it. This is intentional, not a bug to work around — the goal is one predictable, once-per-interval renewal cadence system-wide, no matter what triggers it. Practical effect: calling the manual trigger will no-op (logs `can't launch renew, renewal-state is locked for another worker`) if a renewal already ran — from either source — within the last `renew_check_interval`. If you want manual triggers to run more freely, lower `renew_check_interval` itself rather than expecting the two paths to have independent budgets.
+
+  ```lua
+  auto_ssl:set("enable_internal_renew_schedule", false) -- rely entirely on your own external trigger instead
+  ```
+
+  ```lua
+  -- from your own vhost/endpoint (assumes `auto_ssl` was assigned as a global
+  -- in init_by_lua_block, per this project's own README example):
+  local renewal = require "resty.auto-ssl.jobs.renewal"
+  renewal.do_renew(auto_ssl)
+  ```
+
 PR: [####3](https://github.com/ubmagh/lua-resty-auto-ssl/pull/3)
 
 
