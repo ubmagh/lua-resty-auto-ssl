@@ -110,7 +110,7 @@ PR: [####2](https://github.com/ubmagh/lua-resty-auto-ssl/pull/2)
 
 - **Log messages tagged with their module, for easier filtering** — `ngx.log` calls across the library now read `[auto-ssl][<module>]: ...` (e.g. `[auto-ssl][renewal]:`, `[auto-ssl][redis_storage]:`) instead of a flat `auto-ssl: ...` prefix, so production logs can be filtered per subsystem. A couple of messages that a test still asserts on verbatim (`sanity_spec.lua`) were deliberately left in the old format rather than touched. For the messages that *did* change, rather than hardcode the new prefix into the affected spec assertions (just recreating the same fragility for next time), they were loosened to match the meaningful substring only — the same pattern several assertions already used — so they're robust against this kind of prefix change happening again.
 
-#### New options at a glance
+##### New options at a glance
 
 | Option | Default | Purpose |
 | --- | --- | --- |
@@ -128,4 +128,8 @@ Also new: `require("resty.auto-ssl.jobs.renewal").do_renew(auto_ssl)`, an expose
 
 PR: [####3](https://github.com/ubmagh/lua-resty-auto-ssl/pull/3)
 
+---
 
+### Features & cutomizations: wave #2
+
+//
