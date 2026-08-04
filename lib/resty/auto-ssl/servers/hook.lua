@@ -7,14 +7,14 @@ local parse_openssl_time = require "resty.auto-ssl.utils.parse_openssl_time"
 -- multi-server, load-balanced environment).
 return function(auto_ssl_instance)
   if ngx.var.http_x_hook_secret ~= ngx.shared.auto_ssl_settings:get("hook_server:secret") then
-    ngx.log(ngx.ERR, "auto-ssl: unauthorized access to hook server (hook secret did not match)")
+    ngx.log(ngx.ERR, "[auto-ssl][hook_server]: unauthorized access to hook server (hook secret did not match)")
     return ngx.exit(ngx.HTTP_UNAUTHORIZED)
   end
 
   ngx.req.read_body()
   local params, params_err = ngx.req.get_post_args()
   if not params then
-    ngx.log(ngx.ERR, "auto-ssl: failed to parse POST args: ", params_err)
+    ngx.log(ngx.ERR, "[auto-ssl][hook_server]: failed to parse POST args: ", params_err)
     return ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
   end
 
@@ -26,7 +26,7 @@ return function(auto_ssl_instance)
     assert(params["token_value"])
     local _, err = storage:set_challenge(params["domain"], params["token_filename"], params["token_value"])
     if err then
-      ngx.log(ngx.ERR, "auto-ssl: failed to set challenge: ", err)
+      ngx.log(ngx.ERR, "[auto-ssl][hook_server]: failed to set challenge: ", err)
       return ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
     end
   elseif path == "/clean-challenge" then
@@ -34,7 +34,7 @@ return function(auto_ssl_instance)
     assert(params["token_filename"])
     local _, err = storage:delete_challenge(params["domain"], params["token_filename"])
     if err then
-      ngx.log(ngx.ERR, "auto-ssl: failed to delete challenge: ", err)
+      ngx.log(ngx.ERR, "[auto-ssl][hook_server]: failed to delete challenge: ", err)
       return ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
     end
   elseif path == "/deploy-cert" then
@@ -45,16 +45,16 @@ return function(auto_ssl_instance)
 
     local expiry, parse_err = parse_openssl_time(params["expiry"])
     if parse_err then
-      ngx.log(ngx.ERR, "auto-ssl: failed to parse expiry date: ", parse_err)
+      ngx.log(ngx.ERR, "[auto-ssl][hook_server]: failed to parse expiry date: ", parse_err)
     end
 
     local _, err = storage:set_cert(string.lower(params["domain"]), params["fullchain"], params["privkey"], params["cert"], expiry)
     if err then
-      ngx.log(ngx.ERR, "auto-ssl: failed to set cert: ", err)
+      ngx.log(ngx.ERR, "[auto-ssl][hook_server]: failed to set cert: ", err)
       return ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
     end
   else
-    ngx.log(ngx.ERR, "auto-ssl: unknown request to hook server: ", path)
+    ngx.log(ngx.ERR, "[auto-ssl][hook_server]: unknown request to hook server: ", path)
     return ngx.exit(ngx.HTTP_NOT_FOUND)
   end
 end

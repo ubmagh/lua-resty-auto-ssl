@@ -18,11 +18,11 @@ function _M.setup_worker(self)
   local base_dir = self.options["dir"]
   local _, mkdir_err = shell_blocking.capture_combined({ "mkdir", "-p", base_dir .. "/storage/file" }, { umask = "0022" })
   if mkdir_err then
-    ngx.log(ngx.ERR, "auto-ssl: failed to create storage directory: ", mkdir_err)
+    ngx.log(ngx.ERR, "[auto-ssl][file_storage]: failed to create storage directory: ", mkdir_err)
   end
   local _, chmod_err = shell_blocking.capture_combined({ "chmod", "700", base_dir .. "/storage/file" })
   if chmod_err then
-    ngx.log(ngx.ERR, "auto-ssl: failed to set storage directory permissions: ", chmod_err)
+    ngx.log(ngx.ERR, "[auto-ssl][file_storage]: failed to set storage directory permissions: ", chmod_err)
   end
 end
 
@@ -42,7 +42,7 @@ end
 function _M.set(self, key, value, options)
   local file, err = io.open(file_path(self, key), "w")
   if err then
-    ngx.log(ngx.ERR, "auto-ssl: failed to open file for writing: ", err)
+    ngx.log(ngx.ERR, "[auto-ssl][file_storage]: failed to open file for writing: ", err)
     return false, err
   end
 
@@ -53,7 +53,7 @@ function _M.set(self, key, value, options)
     ngx.timer.at(options["exptime"], function()
       local _, delete_err = _M.delete(self, key)
       if delete_err then
-        ngx.log(ngx.ERR, "auto-ssl: failed to remove file after exptime: ", delete_err)
+        ngx.log(ngx.ERR, "[auto-ssl][file_storage]: failed to remove file after exptime: ", delete_err)
       end
     end)
   end

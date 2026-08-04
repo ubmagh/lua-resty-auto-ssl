@@ -92,7 +92,7 @@ describe("option generate_certs", function()
 
     local error_log = server.read_error_log()
     assert.matches("using fallback - did not issue certificate, because the generate_certs setting is false", error_log, nil, true)
-    assert.matches("auto-ssl: issuing new certificate for", error_log, nil, true)
+    assert.matches("issuing new certificate for", error_log, nil, true)
     assert.Not.matches("[warn]", error_log, nil, true)
     assert.Not.matches("[alert]", error_log, nil, true)
     assert.Not.matches("[emerg]", error_log, nil, true)

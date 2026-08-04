@@ -9,7 +9,7 @@ return function(auto_ssl_instance)
   if not matches or not matches[1] then
     ngx.exit(ngx.HTTP_NOT_FOUND)
   elseif match_err then
-    ngx.log(ngx.ERR, "auto-ssl: regex error: ", match_err)
+    ngx.log(ngx.ERR, "[auto-ssl][challenge_server]: regex error: ", match_err)
   end
   local token_filename = matches[1]
 

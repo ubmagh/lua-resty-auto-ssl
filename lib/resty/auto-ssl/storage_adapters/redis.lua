@@ -75,7 +75,7 @@ function _M.release_connection(self, connection)
   local keepalive = self.options["keepalive"] or {}
   local ok, err = connection:set_keepalive(keepalive["keepalive_duration"] or 300000, keepalive["pool_size"] or 10) -- 10 conn for 5 mins, by default
   if not ok then
-    ngx.log(ngx.ERR, "auto-ssl: failed to set keepalive on redis connection: ", err)
+    ngx.log(ngx.ERR, "[auto-ssl][redis_storage]: failed to set keepalive on redis connection: ", err)
   end
 end
 
@@ -109,7 +109,7 @@ function _M.set(self, key, value, options)
     if options and options["exptime"] then
       local _, expire_err = connection:expire(key, options["exptime"])
       if expire_err then
-        ngx.log(ngx.ERR, "auto-ssl: failed to set expire: ", expire_err)
+        ngx.log(ngx.ERR, "[auto-ssl][redis_storage]: failed to set expire: ", expire_err)
       end
     end
   end

@@ -38,7 +38,7 @@ function _M.issue_cert(auto_ssl_instance, domain)
     "--hook", lua_root .. "/bin/resty-auto-ssl/letsencrypt_hooks",
   })
 
-  ngx.log( ngx.ERR, "auto-ssl-debug: seconds taken for dehyderated("..domain..") shell cmd: "..tostring(ngx.time()-start_time) )
+  ngx.log( ngx.ERR, "[auto-ssl][lets_encrypt-debug]: seconds taken for dehyderated("..domain..") shell cmd: "..tostring(ngx.time()-start_time) )
   -- Cleanup dehydrated files after running to prevent temp files from piling
   -- up. This always runs, regardless of whether or not dehydrated succeeds (in
   -- which case the certs should be installed in storage) or dehydrated fails
@@ -46,18 +46,18 @@ function _M.issue_cert(auto_ssl_instance, domain)
   _M.cleanup(auto_ssl_instance, domain)
 
   if result["status"] ~= 0 then
-    ngx.log(ngx.ERR, "auto-ssl: dehydrated failed: ", result["command"], " status: ", result["status"], " out: ", result["output"], " err: ", err)
+    ngx.log(ngx.ERR, "[auto-ssl][lets_encrypt]: dehydrated failed: ", result["command"], " status: ", result["status"], " out: ", result["output"], " err: ", err)
     return nil, "dehydrated failure"
   end
 
-  ngx.log(ngx.DEBUG, "auto-ssl: dehydrated output: " .. result["output"])
+  ngx.log(ngx.DEBUG, "[auto-ssl][lets_encrypt]: dehydrated output: " .. result["output"])
 
   -- The result of running that command should result in the certs being
   -- populated in our storage (due to the deploy_cert hook triggering).
   local storage = auto_ssl_instance.storage
   local cert, get_cert_err = storage:get_cert(domain)
   if get_cert_err then
-    ngx.log(ngx.ERR, "auto-ssl: error fetching certificate from storage for ", domain, ": ", get_cert_err)
+    ngx.log(ngx.ERR, "[auto-ssl][lets_encrypt]: error fetching certificate from storage for ", domain, ": ", get_cert_err)
   end
 
   -- Return error if things are still unexpectedly missing.
@@ -65,7 +65,7 @@ function _M.issue_cert(auto_ssl_instance, domain)
     return nil, "dehydrated succeeded, but no certs present"
   end
 
-  ngx.log( ngx.ERR, "auto-ssl-debug: successfully renewed the cert for  "..domain )
+  ngx.log( ngx.ERR, "[auto-ssl][lets_encrypt-debug]: successfully renewed the cert for  "..domain )
   return cert
 end
 
@@ -76,7 +76,7 @@ function _M.cleanup(auto_ssl_instance, domain)
   local dir = auto_ssl_instance:get("dir") .. "/letsencrypt/certs/" .. domain
   local _, rm_err = shell_execute({ "rm", "-rf", dir })
   if rm_err then
-    ngx.log(ngx.ERR, "auto-ssl: failed to cleanup certs: ", rm_err)
+    ngx.log(ngx.ERR, "[auto-ssl][lets_encrypt]: failed to cleanup certs: ", rm_err)
   end
 end
 

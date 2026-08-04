@@ -28,7 +28,7 @@ describe("expiry", function()
 
     local error_log = server.nginx_error_log_tail:read()
     assert.matches("issuing new certificate for " .. server.tunnel_hostname, error_log, nil, true)
-    assert.Not.matches("auto-ssl: checking certificate renewals for " .. server.tunnel_hostname, error_log, nil, true)
+    assert.Not.matches("checking certificate renewals for " .. server.tunnel_hostname, error_log, nil, true)
     assert.Not.matches("failed to get the expiry date", error_log, nil, true)
 
     local cert_path = server.current_test_dir .. "/auto-ssl/storage/file/" .. ngx.escape_uri(server.tunnel_hostname .. ":latest")
@@ -81,9 +81,9 @@ describe("expiry", function()
     ngx.sleep(3)
 
     error_log = server.nginx_error_log_tail:read()
-    assert.matches("auto-ssl: checking certificate renewals for " .. server.tunnel_hostname, error_log, nil, true)
-    assert.matches("auto-ssl: setting expiration date of " .. server.tunnel_hostname, error_log, nil, true)
-    assert.matches("auto-ssl: expiry date is more than 30 days out, skipping renewal: " .. server.tunnel_hostname, error_log, nil, true)
+    assert.matches("checking certificate renewals for " .. server.tunnel_hostname, error_log, nil, true)
+    assert.matches("setting expiration date of " .. server.tunnel_hostname, error_log, nil, true)
+    assert.matches("expiry date is more than 30 days out, skipping renewal: " .. server.tunnel_hostname, error_log, nil, true)
 
     content = assert(file.read(cert_path))
     assert.string(content)
@@ -138,7 +138,7 @@ describe("expiry", function()
     ngx.sleep(3)
 
     error_log = server.nginx_error_log_tail:read()
-    assert.matches("auto-ssl: checking certificate renewals for " .. server.tunnel_hostname, error_log, nil, true)
+    assert.matches("checking certificate renewals for " .. server.tunnel_hostname, error_log, nil, true)
     assert.matches("Skipping renew!", error_log, nil, true)
 
     -- Since this cert renewal is still valid, it should still remain despite
@@ -158,13 +158,13 @@ describe("expiry", function()
     ngx.sleep(5)
 
     error_log = server.nginx_error_log_tail:read()
-    assert.matches("auto-ssl: checking certificate renewals for " .. server.tunnel_hostname, error_log, nil, true)
+    assert.matches("checking certificate renewals for " .. server.tunnel_hostname, error_log, nil, true)
     assert.matches("Skipping renew!", error_log, nil, true)
-    assert.matches("auto-ssl: checking certificate renewals for unresolvable-sdjfklsdjf.example", error_log, nil, true)
+    assert.matches("checking certificate renewals for unresolvable-sdjfklsdjf.example", error_log, nil, true)
     assert.matches("Ignoring because renew was forced!", error_log, nil, true)
     assert.matches("Domain name does not end with a valid public suffix (TLD)", error_log, nil, true)
-    assert.matches("auto-ssl: issuing renewal certificate failed: dehydrated failure", error_log, nil, true)
-    assert.matches("auto-ssl: existing certificate is expired, deleting: unresolvable-sdjfklsdjf.example", error_log, nil, true)
+    assert.matches("issuing renewal certificate failed: dehydrated failure", error_log, nil, true)
+    assert.matches("existing certificate is expired, deleting: unresolvable-sdjfklsdjf.example", error_log, nil, true)
 
     -- Verify that the valid cert still remains (despite being marked as
     -- expired).
@@ -230,8 +230,8 @@ describe("expiry", function()
     ngx.sleep(3)
 
     local error_log = server.nginx_error_log_tail:read()
-    assert.matches("auto-ssl: checking certificate renewals for disallowed.example", error_log, nil, true)
-    assert.matches("auto-ssl: expiry date is more than 30 days out, skipping renewal: disallowed.example", error_log, nil, true)
+    assert.matches("checking certificate renewals for disallowed.example", error_log, nil, true)
+    assert.matches("expiry date is more than 30 days out, skipping renewal: disallowed.example", error_log, nil, true)
 
     local content = assert(file.read(disallowed_cert_path))
     assert.string(content)
@@ -249,8 +249,8 @@ describe("expiry", function()
     -- Verify that the disallowed domain got removed now that the cert was set
     -- to expire in the past.
     error_log = server.nginx_error_log_tail:read()
-    assert.matches("auto-ssl: checking certificate renewals for disallowed.example", error_log, nil, true)
-    assert.matches("auto-ssl: domain not allowed, not renewing: disallowed.example", error_log, nil, true)
+    assert.matches("checking certificate renewals for disallowed.example", error_log, nil, true)
+    assert.matches("domain not allowed, not renewing: disallowed.example", error_log, nil, true)
     assert.matches(" auto-ssl: existing certificate is expired, deleting: disallowed.example", error_log, nil, true)
 
     local file_content, file_err = file.read(disallowed_cert_path)

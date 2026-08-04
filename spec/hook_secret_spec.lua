@@ -11,7 +11,7 @@ describe("hook secret", function()
     })
 
     local error_log = server.read_error_log()
-    assert.matches("auto-ssl: dict auto_ssl_settings could not be found. Please add it to your configuration: `lua_shared_dict auto_ssl_settings 64k;`", error_log, nil, true)
+    assert.matches("dict auto_ssl_settings could not be found. Please add it to your configuration: `lua_shared_dict auto_ssl_settings 64k;`", error_log, nil, true)
   end)
 
   it("doesn't change the hook secret after reloading", function()

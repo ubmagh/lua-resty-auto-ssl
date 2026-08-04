@@ -88,7 +88,7 @@ end
 
 function _M.set(self, key, value)
   if key == "storage" then
-    ngx.log(ngx.ERR, "auto-ssl: DEPRECATED: Don't use auto_ssl:set() for the 'storage' instance. Set directly with auto_ssl.storage.")
+    ngx.log(ngx.ERR, "[auto-ssl]: DEPRECATED: Don't use auto_ssl:set() for the 'storage' instance. Set directly with auto_ssl.storage.")
     self.storage = value
     return
   end
@@ -98,7 +98,7 @@ end
 
 function _M.get(self, key)
   if key == "storage" then
-    ngx.log(ngx.ERR, "auto-ssl: DEPRECATED: Don't use auto_ssl:get() for the 'storage' instance. Get directly with auto_ssl.storage.")
+    ngx.log(ngx.ERR, "[auto-ssl]: DEPRECATED: Don't use auto_ssl:get() for the 'storage' instance. Get directly with auto_ssl.storage.")
     return self.storage
   end
 

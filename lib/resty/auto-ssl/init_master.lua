@@ -18,7 +18,7 @@ local function check_dependencies()
   for _, bin in ipairs(runtime_dependencies) do
     local _, err = shell_blocking.capture_combined({ "command", "-v", bin })
     if(err) then
-      ngx.log(ngx.ERR, "auto-ssl: `" .. bin .. "` was not found in PATH. Please install `" .. bin .. "` first.")
+      ngx.log(ngx.ERR, "[auto-ssl][init_master]: `" .. bin .. "` was not found in PATH. Please install `" .. bin .. "` first.")
     end
   end
 end
@@ -42,7 +42,7 @@ local function generate_hook_sever_secret()
   local random = resty_random.bytes(32)
   local _, set_err = ngx.shared.auto_ssl_settings:safe_set("hook_server:secret", str.to_hex(random))
   if set_err then
-    ngx.log(ngx.ERR, "auto-ssl: failed to set shdict for hook_server:secret: ", set_err)
+    ngx.log(ngx.ERR, "[auto-ssl][init_master]: failed to set shdict for hook_server:secret: ", set_err)
   end
 end
 
@@ -51,22 +51,22 @@ local function generate_config(auto_ssl_instance)
 
   local _, tmp_mkdir_err = shell_blocking.capture_combined({ "mkdir", "-p", base_dir .. "/tmp" })
   if tmp_mkdir_err then
-    ngx.log(ngx.ERR, "auto-ssl: failed to create tmp dir: ", tmp_mkdir_err)
+    ngx.log(ngx.ERR, "[auto-ssl][init_master]: failed to create tmp dir: ", tmp_mkdir_err)
   end
 
   local _, tmp_chmod_err = shell_blocking.capture_combined({ "chmod", "777", base_dir .. "/tmp" })
   if tmp_chmod_err then
-    ngx.log(ngx.ERR, "auto-ssl: failed to create tmp dir permissions: ", tmp_chmod_err)
+    ngx.log(ngx.ERR, "[auto-ssl][init_master]: failed to create tmp dir permissions: ", tmp_chmod_err)
   end
 
   local _, mkdir_err = shell_blocking.capture_combined({ "mkdir", "-p", base_dir .. "/letsencrypt/conf.d" }, { umask = "0022" })
   if mkdir_err then
-    ngx.log(ngx.ERR, "auto-ssl: failed to create letsencrypt/conf.d dir: ", mkdir_err)
+    ngx.log(ngx.ERR, "[auto-ssl][init_master]: failed to create letsencrypt/conf.d dir: ", mkdir_err)
   end
 
   local _, chmod_err = shell_blocking.capture_combined({ "chmod", "777", base_dir .. "/letsencrypt" })
   if chmod_err then
-    ngx.log(ngx.ERR, "auto-ssl: failed to create letsencrypt dir permissions: ", chmod_err)
+    ngx.log(ngx.ERR, "[auto-ssl][init_master]: failed to create letsencrypt dir permissions: ", chmod_err)
   end
 
   -- Remove the old "config.sh" file used by dehydrated v0.2.0. Now it's
@@ -75,7 +75,7 @@ local function generate_config(auto_ssl_instance)
 
   local file, err = io.open(base_dir .. "/letsencrypt/config", "w")
   if err then
-    ngx.log(ngx.ERR, "auto-ssl: failed to open letsencrypt config file")
+    ngx.log(ngx.ERR, "[auto-ssl][init_master]: failed to open letsencrypt config file")
   else
     file:write('# This file will be overwritten by resty-auto-ssl.\n')
     file:write('# Place any customizations in ' .. base_dir .. '/letsencrypt/conf.d/*.sh\n\n')
@@ -117,7 +117,7 @@ end
 
 return function(auto_ssl_instance)
   if not ngx.shared.auto_ssl_settings then
-    ngx.log(ngx.ERR, "auto-ssl: dict auto_ssl_settings could not be found. Please add it to your configuration: `lua_shared_dict auto_ssl_settings 64k;`")
+    ngx.log(ngx.ERR, "[auto-ssl][init_master]: dict auto_ssl_settings could not be found. Please add it to your configuration: `lua_shared_dict auto_ssl_settings 64k;`")
   end
 
   check_dependencies()
