@@ -108,6 +108,24 @@ PR: [####2](https://github.com/ubmagh/lua-resty-auto-ssl/pull/2)
   renewal.do_renew(auto_ssl)
   ```
 
+- **Log messages tagged with their module, for easier filtering** — `ngx.log` calls across the library now read `[auto-ssl][<module>]: ...` (e.g. `[auto-ssl][renewal]:`, `[auto-ssl][redis_storage]:`) instead of a flat `auto-ssl: ...` prefix, so production logs can be filtered per subsystem. A couple of messages that a test still asserts on verbatim (`sanity_spec.lua`) were deliberately left in the old format rather than touched. For the messages that *did* change, rather than hardcode the new prefix into the affected spec assertions (just recreating the same fragility for next time), they were loosened to match the meaningful substring only — the same pattern several assertions already used — so they're robust against this kind of prefix change happening again.
+
+#### New options at a glance
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `challenge_keys_exptime` | `3600` (1h) | TTL for ACME challenge tokens in storage. |
+| `ssl_certs_keys_exptime` | `7776000` (90d) | Nominal cert TTL; only used as-is by expire mode `1`. |
+| `ssl_certs_keys_expire_mode` | `2` | `0` no TTL, `1` flat TTL, `2` dynamic (per-cert expiry). |
+| `renew_offset_ssl_certs_exptime` | `86400` (1d) | Buffer subtracted from the cert TTL so storage expires before the cert, giving renewal room to catch up. |
+| `min_ssl_certs_exptime` | `86400` (1d) | Floor for the TTL if the subtraction above goes non-positive. |
+| `renew_age_days` | `30` | How close to expiry (in days) before the renewal job renews a cert. |
+| `enable_internal_renew_schedule` | `true` | Set `false` to disable the internal recursive renewal timer entirely (e.g. to drive renewal only via your own external trigger). |
+| `redis` → `timeouts.conn/send/read` | `3000`/`3000`/`3000` (ms) | Redis connect/send/read timeouts. |
+| `redis` → `keepalive.keepalive_duration/pool_size` | `300000` ms / `10` | Redis connection pool idle timeout and size, per nginx worker. |
+
+Also new: `require("resty.auto-ssl.jobs.renewal").do_renew(auto_ssl)`, an exposed function (not a config option) to manually trigger a renewal cycle on demand.
+
 PR: [####3](https://github.com/ubmagh/lua-resty-auto-ssl/pull/3)
 
 
