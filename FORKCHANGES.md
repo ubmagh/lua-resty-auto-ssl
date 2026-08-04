@@ -69,6 +69,24 @@ PR: [####2](https://github.com/ubmagh/lua-resty-auto-ssl/pull/2)
 
 - **Case-insensitive domain keys in storage** — domains are now normalized to lowercase everywhere they touch storage (cache keys, storage keys, renewals, issuance), instead of only in some code paths. Requests for the same domain in different cases (`Example.com` vs `example.com`) now share one cert/cache entry instead of each triggering its own issuance.
 
-PR: _(link once opened)_
+- **Redis connection lifecycle fix, plus configurable timeouts/keepalive** — the Redis adapter previously never released connections back to the pool correctly: it tried to `set_keepalive` *before* connecting (a no-op, since there's nothing to keep alive yet) and cached the connection in `ngx.ctx` for reuse across a request without ever releasing it afterward, so it just leaked at the end of each request instead of being pooled. Fixed by opening one connection per operation and explicitly releasing it right after that operation completes — deterministic, and doesn't depend on every call site remembering to clean up (which is easy to miss across early-return error paths). Also added `timeouts` and `keepalive` options, previously hardcoded.
+
+  ```lua
+  auto_ssl:set("redis", {
+    host = "127.0.0.1",
+    port = 6379,
+    timeouts = {
+      conn = 3000,  -- connect timeout, ms
+      send = 3000,  -- send timeout, ms
+      read = 3000,  -- read timeout, ms
+    },
+    keepalive = {
+      keepalive_duration = 300000, -- max idle time in the pool, ms (5 min, check `timeout` setting on redis-side)
+      pool_size = 10,              -- max pooled connections per nginx worker
+    },
+  })
+  ```
+
+PR: [####3](https://github.com/ubmagh/lua-resty-auto-ssl/pull/3)
 
 

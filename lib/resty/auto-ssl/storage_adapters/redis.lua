@@ -24,16 +24,24 @@ function _M.new(auto_ssl_instance)
   return setmetatable({ options = options }, { __index = _M })
 end
 
+-- Opens a new connection for a single operation. Callers must release it
+-- via release_connection() once they're done (see get/set/delete/
+-- keys_with_suffix below) -- connections are not reused across multiple
+-- calls, so that release is always deterministic and doesn't depend on every
+-- call site remembering to clean up (which is easy to miss, e.g. across
+-- early-return error paths).
 function _M.get_connection(self)
-  local connection = ngx.ctx.auto_ssl_redis_connection
-  if connection then
-    return connection
-  end
-
-  connection = redis:new()
+  local connection = redis:new()
   local ok, err
 
   local connect_options = self.options["connect_options"] or {}
+  if self.options["timeouts"] then
+    local timeouts = self.options["timeouts"]
+    connection:set_timeouts(timeouts["conn"], timeouts["send"], timeouts["read"])
+  else
+    connection:set_timeouts(3000, 3000, 3000)
+  end
+
   if self.options["socket"] then
     ok, err = connection:connect(self.options["socket"], connect_options)
   else
@@ -57,8 +65,18 @@ function _M.get_connection(self)
     end
   end
 
-  ngx.ctx.auto_ssl_redis_connection = connection
   return connection
+end
+
+-- Returns the connection to the built-in connection pool, so future
+-- get_connection() calls (including from other requests) can reuse the
+-- underlying TCP connection instead of paying for a new handshake each time.
+function _M.release_connection(self, connection)
+  local keepalive = self.options["keepalive"] or {}
+  local ok, err = connection:set_keepalive(keepalive["keepalive_duration"] or 300000, keepalive["pool_size"] or 10) -- 10 conn for 5 mins, by default
+  if not ok then
+    ngx.log(ngx.ERR, "auto-ssl: failed to set keepalive on redis connection: ", err)
+  end
 end
 
 function _M.setup()
@@ -75,6 +93,7 @@ function _M.get(self, key)
     res = nil
   end
 
+  self:release_connection(connection)
   return res, err
 end
 
@@ -95,6 +114,7 @@ function _M.set(self, key, value, options)
     end
   end
 
+  self:release_connection(connection)
   return ok, err
 end
 
@@ -104,7 +124,9 @@ function _M.delete(self, key)
     return false, connection_err
   end
 
-  return connection:expire(prefixed_key(self, key), 0)
+  local ok, err = connection:expire(prefixed_key(self, key), 0)
+  self:release_connection(connection)
+  return ok, err
 end
 
 function _M.keys_with_suffix(self, suffix)
@@ -128,6 +150,7 @@ function _M.keys_with_suffix(self, suffix)
     keys = unprefixed_keys
   end
 
+  self:release_connection(connection)
   return keys, err
 end
 
