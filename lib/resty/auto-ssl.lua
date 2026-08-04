@@ -80,7 +80,7 @@ function _M.new(options)
   if not options["renew_age_days"] then
     options["renew_age_days"] = 30 -- 30 days default
   end
-  
+
   local self =  setmetatable({ options = options }, { __index = _M })
   _M.singleton_instance = self
   return self

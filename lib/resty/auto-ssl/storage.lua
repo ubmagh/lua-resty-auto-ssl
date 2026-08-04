@@ -57,7 +57,7 @@ function _M.set_cert(self, domain, fullchain_pem, privkey_pem, cert_pem, expiry)
   end
 
   local certs_expiry_cases = {
-    [0]= function () -- disable TTL at all 
+    [0]= function () -- disable TTL at all
             return {}
           end,
     [1]= function () -- use the configured TTL
@@ -85,7 +85,7 @@ function _M.set_cert(self, domain, fullchain_pem, privkey_pem, cert_pem, expiry)
             return { exptime = exptime }
           end
   }
-  
+
   -- Store the cert under the "latest" alias, which is what this app will use.
   if certs_expiry_cases[self.ssl_certs_keys_expire_mode] then
     return self.adapter:set(domain .. ":latest", string, certs_expiry_cases[self.ssl_certs_keys_expire_mode]())
