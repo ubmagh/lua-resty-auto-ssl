@@ -45,7 +45,7 @@ function _M.new(options)
     options["json_adapter"] = "resty.auto-ssl.json_adapters.cjson"
   end
 
-  if not options["enable_internal_renew_schedule"] then
+  if options["enable_internal_renew_schedule"] == nil then
     options["enable_internal_renew_schedule"] = true -- if u don't have an external triggering system
   end
 
