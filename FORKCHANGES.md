@@ -154,6 +154,10 @@ PR: [####3](https://github.com/ubmagh/lua-resty-auto-ssl/pull/3)
   })
   ```
 
+- **Redis adapter: skip re-authenticating pooled connections, and silently retry a stale one instead of logging it as a failure** — `get_connection()` previously ran `AUTH`/`SELECT` on every single `get`/`set`/`delete`/`keys_with_suffix` call, even when the connection it just got was pulled back out of the wave #1 keepalive pool and already had both applied from its prior use. It now checks `connection:get_reused_times()` and only runs `AUTH`/`SELECT` on a genuinely fresh connection, saving 2 round trips per operation on any deployment with `redis.auth`/`redis.db` configured. Separately, a connection sitting idle in the pool can get closed by the other end at any time (Redis's own idle timeout, a NAT/firewall) with no way to detect that ahead of a command — a new `with_connection()` wrapper now retries once on a fresh connection when this happens on a *reused* connection specifically, without logging anything, since every operation it covers (an absolute `SET`, an absolute `EXPIRE`, a read) is naturally idempotent and safe to re-run. A connection whose command failed is always `close()`'d rather than handed back to the pool, which also removes an existing minor noise source: `release_connection()` on an already-broken connection just failed too, logging a second, redundant line on top of the real error.
+
+  Not covered by a spec test — reproducing the stale-connection race deterministically would mean giving the *shared* Redis test instance a real idle timeout, affecting every other spec file that reuses it, which isn't worth it for a change this narrow and reasoned-safe (idempotent ops, unchanged error path when the retry also fails).
+
 
 
 PR: [####4](https://github.com/ubmagh/lua-resty-auto-ssl/pull/4)

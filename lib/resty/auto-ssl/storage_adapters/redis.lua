@@ -24,12 +24,11 @@ function _M.new(auto_ssl_instance)
   return setmetatable({ options = options }, { __index = _M })
 end
 
--- Opens a new connection for a single operation. Callers must release it
--- via release_connection() once they're done (see get/set/delete/
--- keys_with_suffix below) -- connections are not reused across multiple
--- calls, so that release is always deterministic and doesn't depend on every
--- call site remembering to clean up (which is easy to miss, e.g. across
--- early-return error paths).
+-- Opens a connection for a single operation, pulling one out of the
+-- keepalive pool below when available. Call sites should go through
+-- with_connection() (see below) rather than calling this directly, so the
+-- connection is always deterministically released or closed regardless of
+-- the outcome (easy to miss across early-return error paths otherwise).
 function _M.get_connection(self)
   local connection = redis:new()
   local ok, err
@@ -56,21 +55,80 @@ function _M.get_connection(self)
     return false, err
   end
 
-  if self.options["auth"] then
-    ok, err = connection:auth(self.options["auth"])
-    if not ok then
-      return false, err
+  -- A connection pulled back out of the keepalive pool below already has
+  -- AUTH/SELECT applied from its previous use -- skip redoing that
+  -- handshake on every single operation, so pooling actually saves the round
+  -- trips it's meant to, not just the initial TCP connect.
+  local reused_times = connection:get_reused_times()
+  if not reused_times or reused_times == 0 then
+    if self.options["auth"] then
+      ok, err = connection:auth(self.options["auth"])
+      if not ok then
+        return false, err
+      end
     end
-  end
 
-  if self.options["db"] then
-    ok, err = connection:select(self.options["db"])
-    if not ok then
-      return false, err
+    if self.options["db"] then
+      ok, err = connection:select(self.options["db"])
+      if not ok then
+        return false, err
+      end
     end
   end
 
   return connection
+end
+
+-- Runs fn(connection) once against a pooled connection and returns its
+-- result/err.
+--
+-- A connection pulled back out of the keepalive pool can have already been
+-- closed by the other end (Redis idle timeout, a NAT/firewall idle-kill)
+-- with no way to detect that ahead of time over a cosocket -- the only way
+-- to find out is to actually try a command on it, which is exactly what fn
+-- does. So if fn fails specifically on a reused connection, silently retry
+-- once on a fresh connection instead of treating this expected race as a
+-- real failure -- every operation this wraps (an absolute SET, an absolute
+-- EXPIRE, a read) is naturally idempotent, so re-running one is safe.
+--
+-- A connection whose command failed is always closed rather than released
+-- back to the pool -- releasing (set_keepalive) an already-broken connection
+-- just fails too, adding a second, noisier log line on top of the original
+-- failure for no benefit.
+local function with_connection(self, fn)
+  local connection, connection_err = self:get_connection()
+  if connection_err then
+    return nil, connection_err
+  end
+
+  local reused_times = connection:get_reused_times()
+  local result, err = fn(connection)
+
+  if not err then
+    self:release_connection(connection)
+    return result, err
+  end
+
+  connection:close()
+
+  if not reused_times or reused_times == 0 then
+    -- Already a fresh connection -- retrying won't change anything.
+    return result, err
+  end
+
+  local retry_connection, retry_connection_err = self:get_connection()
+  if retry_connection_err then
+    return nil, retry_connection_err
+  end
+
+  result, err = fn(retry_connection)
+  if err then
+    retry_connection:close()
+  else
+    self:release_connection(retry_connection)
+  end
+
+  return result, err
 end
 
 -- Returns the connection to the built-in connection pool, so future
@@ -88,59 +146,39 @@ function _M.setup()
 end
 
 function _M.get(self, key)
-  local connection, connection_err = self:get_connection()
-  if connection_err then
-    return nil, connection_err
-  end
-
-  local res, err = connection:get(prefixed_key(self, key))
-  if res == ngx.null then
-    res = nil
-  end
-
-  self:release_connection(connection)
-  return res, err
+  return with_connection(self, function(connection)
+    local res, err = connection:get(prefixed_key(self, key))
+    if res == ngx.null then
+      res = nil
+    end
+    return res, err
+  end)
 end
 
 function _M.set(self, key, value, options)
-  local connection, connection_err = self:get_connection()
-  if connection_err then
-    return false, connection_err
-  end
-
-  key = prefixed_key(self, key)
-  local ok, err = connection:set(key, value)
-  if ok then
-    if options and options["exptime"] then
-      local _, expire_err = connection:expire(key, options["exptime"])
+  return with_connection(self, function(connection)
+    local prefixed = prefixed_key(self, key)
+    local ok, err = connection:set(prefixed, value)
+    if ok and options and options["exptime"] then
+      local _, expire_err = connection:expire(prefixed, options["exptime"])
       if expire_err then
         ngx.log(ngx.ERR, "[auto-ssl][redis_storage]: failed to set expire: ", expire_err)
       end
     end
-  end
-
-  self:release_connection(connection)
-  return ok, err
+    return ok, err
+  end)
 end
 
 function _M.delete(self, key)
-  local connection, connection_err = self:get_connection()
-  if connection_err then
-    return false, connection_err
-  end
-
-  local ok, err = connection:expire(prefixed_key(self, key), 0)
-  self:release_connection(connection)
-  return ok, err
+  return with_connection(self, function(connection)
+    return connection:expire(prefixed_key(self, key), 0)
+  end)
 end
 
 function _M.keys_with_suffix(self, suffix)
-  local connection, connection_err = self:get_connection()
-  if connection_err then
-    return false, connection_err
-  end
-
-  local keys, err = connection:keys(prefixed_key(self, "*" .. suffix))
+  local keys, err = with_connection(self, function(connection)
+    return connection:keys(prefixed_key(self, "*" .. suffix))
+  end)
 
   if keys and self.options["prefix"] then
     local unprefixed_keys = {}
@@ -155,7 +193,6 @@ function _M.keys_with_suffix(self, suffix)
     keys = unprefixed_keys
   end
 
-  self:release_connection(connection)
   return keys, err
 end
 
