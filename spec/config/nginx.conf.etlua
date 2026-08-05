@@ -16,6 +16,20 @@ http {
   lua_package_cpath "/tmp/resty-auto-ssl-server-luarocks/lib/lua/5.1/?.so;;";
 
   resolver <%- os.getenv("TEST_NGINX_RESOLVER") or "ipv6=off local=on" %>;
+
+  <% if os.getenv("TEST_NGINX_SUPPRESS_SOCKET_LOG_ERRORS") then %>
+    -- Suppress ngx_lua's own "attempt to send data on a closed socket"
+    -- logging. This fires whenever :send() is called on a cosocket that was
+    -- never connected or already torn down -- observed specifically around
+    -- sockproc startup on the old pinned openresty1.13/lua51 images (set via
+    -- TEST_NGINX_SUPPRESS_SOCKET_LOG_ERRORS in their Dockerfiles), noisy but
+    -- harmless there since every cosocket call site in this codebase already
+    -- checks its own connect/send error return before proceeding. Left on
+    -- (the nginx default) everywhere else, since it hasn't been observed on
+    -- the actively-maintained images and there's no reason to reduce error
+    -- visibility where it isn't needed.
+    lua_socket_log_errors off;
+  <% end %>
   lua_shared_dict auto_ssl <%- auto_ssl_dict_size or "1m" %>;
   <% if not disable_auto_ssl_settings_dict then %>
     lua_shared_dict auto_ssl_settings 64k;
