@@ -128,6 +128,9 @@ PR: [####2](https://github.com/ubmagh/lua-resty-auto-ssl/pull/2)
 
 Also new: `require("resty.auto-ssl.jobs.renewal").do_renew(auto_ssl)`, an exposed function (not a config option) to manually trigger a renewal cycle on demand.
 
+- **`lua-resty-redis`'s `set_timeouts()` doesn't exist on the two old pinned images** — `openresty1.13`/`lua51` bundle lua-resty-redis 0.25/0.26, and the 3-argument `set_timeouts(conn, send, read)` wasn't added until v0.28 (2020) — calling it unconditionally threw a hard Lua error there ("attempt to call a nil value"), which showed up as a genuine `[error]` failing Redis-adapter tests on those two variants specifically. `redis.lua` now checks whether `connection.set_timeouts` exists before calling it, falling back to the older single-value `set_timeout(ms)` (using the largest of the three configured values) when it doesn't.
+- **Intermittent ACME `NXDOMAIN` failures against the Cloudflare tunnel** — `cloudflared` itself warns that a freshly-announced quick tunnel "may take some time to be reachable": its hostname gets printed to the log before the DNS record has necessarily propagated publicly. The test harness extracted that hostname and immediately started issuing real certs against it, so Let's Encrypt's own validator would occasionally hit the domain before its DNS record had actually propagated, failing with a genuine `NXDOMAIN` unrelated to any of our code (hit both file- and Redis-adapter tests identically, since it happens before either adapter is even reached). `spec/support/server.lua` now polls the tunnel over real HTTPS until it actually responds before letting the rest of the suite proceed, instead of trusting the announcement alone.
+
 PR: [####3](https://github.com/ubmagh/lua-resty-auto-ssl/pull/3)
 
 ---
