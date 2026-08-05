@@ -4,6 +4,7 @@ local etlua = require "etlua"
 local file = require "pl.file"
 local grp = require "posix.grp"
 local handler = require 'busted.outputHandlers.base'()
+local http = require "resty.http"
 local log_tail = require "spec.support.log_tail"
 local path = require "pl.path"
 local process = require "process"
@@ -71,6 +72,33 @@ local function start_tunnel()
     local matches, match_err = ngx.re.match(output, "https://([a-z0-9-]+\\.trycloudflare\\.com)", "jo")
     assert(not match_err, match_err)
     _M.tunnel_hostname = matches[1]
+
+    -- cloudflared prints its own "it may take some time to be reachable"
+    -- caveat when it announces a new quick tunnel: the hostname can be
+    -- printed before its DNS record has actually propagated publicly. Real
+    -- Let's Encrypt validation from here on hits that hostname over the
+    -- public internet, so wait until it's genuinely resolvable and
+    -- reachable end-to-end, not just announced locally -- otherwise ACME
+    -- validation can fail with a DNS NXDOMAIN error on an otherwise-healthy
+    -- tunnel that just hasn't propagated yet.
+    local httpc = http.new()
+    local wait_time = 0
+    local sleep_time = 1
+    local max_time = 30
+    local reachable = false
+    repeat
+      local res = httpc:request_uri("https://" .. _M.tunnel_hostname .. "/", { ssl_verify = false })
+      if res then
+        reachable = true
+      else
+        ngx.sleep(sleep_time)
+        wait_time = wait_time + sleep_time
+      end
+    until reachable or wait_time > max_time
+
+    if not reachable then
+      error("tunnel hostname " .. _M.tunnel_hostname .. " did not become reachable in time")
+    end
   end
 end
 

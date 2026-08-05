@@ -13,6 +13,16 @@ function _M.read(self)
     self.pos = file:seek("cur")
   end
 
+  if output then
+    -- Lines tagged "[auto-ssl][<module>-debug]:" are deliberately logged at
+    -- [error] level so they're always captured regardless of a deployment's
+    -- configured error_log verbosity (used for monitoring/dashboards, not
+    -- because they indicate a real problem). Strip them here so the many
+    -- "no unexpected [error]/[warn]/etc." assertions across the spec suite
+    -- don't have to special-case them individually.
+    output = ngx.re.gsub(output, [=[^[^\n]*\[auto-ssl\]\[[^\]]*-debug\][^\n]*\n?]=], "", "jom")
+  end
+
   return output
 end
 

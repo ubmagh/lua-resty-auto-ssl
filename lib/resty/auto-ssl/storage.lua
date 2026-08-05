@@ -16,7 +16,7 @@ function _M.get_challenge(self, domain, path)
 end
 
 function _M.set_challenge(self, domain, path, value)
-  return self.adapter:set(domain .. ":challenge:" .. path, value)
+  return self.adapter:set(domain .. ":challenge:" .. path, value, { exptime = self.challenge_keys_exptime })
 end
 
 function _M.delete_challenge(self, domain, path)
@@ -56,8 +56,42 @@ function _M.set_cert(self, domain, fullchain_pem, privkey_pem, cert_pem, expiry)
     return nil, err
   end
 
+  local certs_expiry_cases = {
+    [0]= function () -- disable TTL at all
+            return {}
+          end,
+    [1]= function () -- use the configured TTL
+            local exptime = self.ssl_certs_keys_exptime - self.renew_offset_ssl_certs_exptime
+            if exptime < 0 then
+              exptime = self.min_ssl_certs_exptime
+              ngx.log(ngx.ERR, "auto-ssl-debug: falling back to minimum expiry time, mode: 1 for domain: "..domain)
+            end
+           return { exptime = exptime }
+          end,
+    [2]= function () -- use the expiry of the cert as TTL
+            if not expiry then
+              local exptime = self.ssl_certs_keys_exptime - self.renew_offset_ssl_certs_exptime
+              if exptime < 0 then
+                exptime = self.min_ssl_certs_exptime
+                ngx.log(ngx.ERR, "auto-ssl-debug: falling back to minimum expiry time, mode: 2 for domain: "..domain)
+              end
+              return { exptime = exptime }
+            end
+            local exptime = tonumber(expiry) - ngx.time() - self.renew_offset_ssl_certs_exptime
+            if exptime < 0 then
+              exptime = self.min_ssl_certs_exptime
+              ngx.log(ngx.ERR, "auto-ssl-debug: falling back to minimum expiry time, mode: 2 for domain: "..domain)
+            end
+            return { exptime = exptime }
+          end
+  }
+
   -- Store the cert under the "latest" alias, which is what this app will use.
-  return self.adapter:set(domain .. ":latest", string)
+  if certs_expiry_cases[self.ssl_certs_keys_expire_mode] then
+    return self.adapter:set(domain .. ":latest", string, certs_expiry_cases[self.ssl_certs_keys_expire_mode]())
+  else
+    return self.adapter:set(domain .. ":latest", string, certs_expiry_cases[2]())
+  end
 end
 
 function _M.delete_cert(self, domain)
@@ -73,7 +107,7 @@ function _M.all_cert_domains(self)
   local domains = {}
   for _, key in ipairs(keys) do
     local domain = ngx.re.sub(key, ":latest$", "", "jo")
-    table.insert(domains, domain)
+    table.insert(domains, string.lower(domain))
   end
 
   return domains

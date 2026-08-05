@@ -9,7 +9,7 @@ local function seed()
   local num_bytes = 4
   local random = random_bytes(num_bytes, true)
   if not random then
-    ngx.log(ngx.WARN, "Could not generate cryptographically secure random data for seeding math.randomseed. Falling back to non-secure random data.")
+    ngx.log(ngx.WARN, "[auto-ssl][random_seed]: Could not generate cryptographically secure random data for seeding math.randomseed. Falling back to non-secure random data.")
     random = random_bytes(num_bytes, false)
   end
 

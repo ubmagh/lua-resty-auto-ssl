@@ -24,16 +24,29 @@ function _M.new(auto_ssl_instance)
   return setmetatable({ options = options }, { __index = _M })
 end
 
+-- Opens a new connection for a single operation. Callers must release it
+-- via release_connection() once they're done (see get/set/delete/
+-- keys_with_suffix below) -- connections are not reused across multiple
+-- calls, so that release is always deterministic and doesn't depend on every
+-- call site remembering to clean up (which is easy to miss, e.g. across
+-- early-return error paths).
 function _M.get_connection(self)
-  local connection = ngx.ctx.auto_ssl_redis_connection
-  if connection then
-    return connection
-  end
-
-  connection = redis:new()
+  local connection = redis:new()
   local ok, err
 
   local connect_options = self.options["connect_options"] or {}
+  local timeouts = self.options["timeouts"] or { conn = 3000, send = 3000, read = 3000 }
+  if connection.set_timeouts then
+    connection:set_timeouts(timeouts["conn"], timeouts["send"], timeouts["read"])
+  else
+    -- set_timeouts() (plural, separate connect/send/read timeouts) was only
+    -- added to lua-resty-redis in v0.28 (2020); the openresty1.13/lua51 test
+    -- images bundle 0.25/0.26, which only have the older, single-value
+    -- set_timeout(ms). Fall back to the largest of the three configured
+    -- values there, so no operation times out earlier than intended.
+    connection:set_timeout(math.max(timeouts["conn"], timeouts["send"], timeouts["read"]))
+  end
+
   if self.options["socket"] then
     ok, err = connection:connect(self.options["socket"], connect_options)
   else
@@ -57,8 +70,18 @@ function _M.get_connection(self)
     end
   end
 
-  ngx.ctx.auto_ssl_redis_connection = connection
   return connection
+end
+
+-- Returns the connection to the built-in connection pool, so future
+-- get_connection() calls (including from other requests) can reuse the
+-- underlying TCP connection instead of paying for a new handshake each time.
+function _M.release_connection(self, connection)
+  local keepalive = self.options["keepalive"] or {}
+  local ok, err = connection:set_keepalive(keepalive["keepalive_duration"] or 300000, keepalive["pool_size"] or 10) -- 10 conn for 5 mins, by default
+  if not ok then
+    ngx.log(ngx.ERR, "[auto-ssl][redis_storage]: failed to set keepalive on redis connection: ", err)
+  end
 end
 
 function _M.setup()
@@ -75,6 +98,7 @@ function _M.get(self, key)
     res = nil
   end
 
+  self:release_connection(connection)
   return res, err
 end
 
@@ -90,11 +114,12 @@ function _M.set(self, key, value, options)
     if options and options["exptime"] then
       local _, expire_err = connection:expire(key, options["exptime"])
       if expire_err then
-        ngx.log(ngx.ERR, "auto-ssl: failed to set expire: ", expire_err)
+        ngx.log(ngx.ERR, "[auto-ssl][redis_storage]: failed to set expire: ", expire_err)
       end
     end
   end
 
+  self:release_connection(connection)
   return ok, err
 end
 
@@ -104,7 +129,9 @@ function _M.delete(self, key)
     return false, connection_err
   end
 
-  return connection:del(prefixed_key(self, key))
+  local ok, err = connection:expire(prefixed_key(self, key), 0)
+  self:release_connection(connection)
+  return ok, err
 end
 
 function _M.keys_with_suffix(self, suffix)
@@ -128,6 +155,7 @@ function _M.keys_with_suffix(self, suffix)
     keys = unprefixed_keys
   end
 
+  self:release_connection(connection)
   return keys, err
 end
 

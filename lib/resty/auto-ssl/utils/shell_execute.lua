@@ -18,7 +18,7 @@ return function(args)
       wait_time = wait_time + sleep_time
 
       if wait_time > max_time then
-        ngx.log(ngx.ERR, "auto-ssl: sockproc did not start in expected amount of time")
+        ngx.log(ngx.ERR, "[auto-ssl][shell_execute]: sockproc did not start in expected amount of time")
         break
       end
     end
@@ -31,7 +31,7 @@ return function(args)
   -- If the script fails due to a missing sockproc socket, try starting up
   -- the sockproc process again and then retry.
   if status ~= 0 and err == "no such file or directory" then
-    ngx.log(ngx.ERR, "auto-ssl: sockproc unexpectedly not available, trying to restart")
+    ngx.log(ngx.ERR, "[auto-ssl][shell_execute]: sockproc unexpectedly not available, trying to restart")
     start_sockproc(true)
     status, out, err = shell.execute(command, options)
   end

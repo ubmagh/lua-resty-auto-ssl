@@ -45,6 +45,10 @@ function _M.new(options)
     options["json_adapter"] = "resty.auto-ssl.json_adapters.cjson"
   end
 
+  if not options["enable_internal_renew_schedule"] then
+    options["enable_internal_renew_schedule"] = true -- if u don't have an external triggering system
+  end
+
   if not options["renew_check_interval"] then
     options["renew_check_interval"] = 86400 -- 1 day
   end
@@ -53,12 +57,38 @@ function _M.new(options)
     options["hook_server_port"] = 8999
   end
 
-  return setmetatable({ options = options }, { __index = _M })
+  if not options["ssl_certs_keys_expire_mode"] then
+    options["ssl_certs_keys_expire_mode"] = 2
+  end
+
+  if not options["challenge_keys_exptime"] then
+    options["challenge_keys_exptime"] = 3600 -- 1h defaults
+  end
+
+  if not options["ssl_certs_keys_exptime"] then
+    options["ssl_certs_keys_exptime"] = 7776000 -- 90 days default
+  end
+
+  if not options["renew_offset_ssl_certs_exptime"] then
+    options["renew_offset_ssl_certs_exptime"] = 86400 -- 1 day
+  end
+
+  if not options["min_ssl_certs_exptime"] then
+    options["min_ssl_certs_exptime"] = 86400 -- 1 day
+  end
+
+  if not options["renew_age_days"] then
+    options["renew_age_days"] = 30 -- 30 days default
+  end
+
+  local self =  setmetatable({ options = options }, { __index = _M })
+  _M.singleton_instance = self
+  return self
 end
 
 function _M.set(self, key, value)
   if key == "storage" then
-    ngx.log(ngx.ERR, "auto-ssl: DEPRECATED: Don't use auto_ssl:set() for the 'storage' instance. Set directly with auto_ssl.storage.")
+    ngx.log(ngx.ERR, "[auto-ssl]: DEPRECATED: Don't use auto_ssl:set() for the 'storage' instance. Set directly with auto_ssl.storage.")
     self.storage = value
     return
   end
@@ -68,7 +98,7 @@ end
 
 function _M.get(self, key)
   if key == "storage" then
-    ngx.log(ngx.ERR, "auto-ssl: DEPRECATED: Don't use auto_ssl:get() for the 'storage' instance. Get directly with auto_ssl.storage.")
+    ngx.log(ngx.ERR, "[auto-ssl]: DEPRECATED: Don't use auto_ssl:get() for the 'storage' instance. Get directly with auto_ssl.storage.")
     return self.storage
   end
 

@@ -59,6 +59,8 @@ RUN mkdir /app
 WORKDIR /app
 
 COPY Makefile /app/Makefile
+ENV TEST_NGINX_SUPPRESS_SOCKET_LOG_ERRORS 1
+
 RUN git config --global url."https://github.com/".insteadOf git://github.com/
 RUN make install-test-deps
 

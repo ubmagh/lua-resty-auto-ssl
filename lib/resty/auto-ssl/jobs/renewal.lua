@@ -24,7 +24,7 @@ local function get_interval_lock(name, interval)
     if err == "exists" then
       return nil
     end
-    ngx.log(ngx.ERR, "failed to add key \"", key, "\": ", err)
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to add key \"", key, "\": ", err)
     return nil
   end
   return true
@@ -34,14 +34,14 @@ local function renew_check_cert_unlock(domain, storage, local_lock, distributed_
   if local_lock then
     local _, local_unlock_err = local_lock:unlock()
     if local_unlock_err then
-      ngx.log(ngx.ERR, "auto-ssl: failed to unlock: ", local_unlock_err)
+      ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to unlock: ", local_unlock_err)
     end
   end
 
   if distributed_lock_value then
     local _, distributed_unlock_err = storage:issue_cert_unlock(domain, distributed_lock_value)
     if distributed_unlock_err then
-      ngx.log(ngx.ERR, "auto-ssl: failed to unlock: ", distributed_unlock_err)
+      ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to unlock: ", distributed_unlock_err)
     end
   end
 end
@@ -50,7 +50,7 @@ local function delete_cert_if_expired(domain, storage, cert)
   -- Give up on renewing this certificate if we didn't manage to renew
   -- it before the expiration date
   if cert["expiry"] and cert["expiry"] < ngx.now() then
-    ngx.log(ngx.WARN, "auto-ssl: existing certificate is expired, deleting: ", domain)
+    ngx.log(ngx.WARN, "[auto-ssl][renewal]: existing certificate is expired, deleting: ", domain)
     storage:delete_cert(domain)
   end
 end
@@ -60,12 +60,12 @@ local function renew_check_cert(auto_ssl_instance, storage, domain)
   -- don't simultaneously try to register the same cert.
   local local_lock, new_local_lock_err = lock:new("auto_ssl", { exptime = 30, timeout = 30 })
   if new_local_lock_err then
-    ngx.log(ngx.ERR, "auto-ssl: failed to create lock: ", new_local_lock_err)
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to create lock: ", new_local_lock_err)
     return
   end
   local _, local_lock_err = local_lock:lock("issue_cert:" .. domain)
   if local_lock_err then
-    ngx.log(ngx.ERR, "auto-ssl: failed to obtain lock: ", local_lock_err)
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to obtain lock: ", local_lock_err)
     return
   end
 
@@ -74,24 +74,24 @@ local function renew_check_cert(auto_ssl_instance, storage, domain)
   -- adapter).
   local distributed_lock_value, distributed_lock_err = storage:issue_cert_lock(domain)
   if distributed_lock_err then
-    ngx.log(ngx.ERR, "auto-ssl: failed to obtain lock: ", distributed_lock_err)
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to obtain lock: ", distributed_lock_err)
     renew_check_cert_unlock(domain, storage, local_lock, nil)
     return
   end
 
-  ngx.log(ngx.NOTICE, "auto-ssl: checking certificate renewals for ", domain)
+  ngx.log(ngx.NOTICE, "[auto-ssl][renewal]: checking certificate renewals for ", domain)
 
   -- Fetch the current certificate.
   local cert, get_cert_err = storage:get_cert(domain)
   if get_cert_err then
-    ngx.log(ngx.ERR, "auto-ssl: renewal error fetching certificate from storage for ", domain, ": ", get_cert_err)
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: renewal error fetching certificate from storage for ", domain, ": ", get_cert_err)
   end
   if not cert then
     cert = {}
   end
 
   if not cert["fullchain_pem"] then
-    ngx.log(ngx.ERR, "auto-ssl: attempting to renew certificate for domain without certificates in storage: ", domain)
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: attempting to renew certificate for domain without certificates in storage: ", domain)
     renew_check_cert_unlock(domain, storage, local_lock, distributed_lock_value)
     return
   end
@@ -102,42 +102,43 @@ local function renew_check_cert(auto_ssl_instance, storage, domain)
     local cert_pem_path = auto_ssl_instance:get("dir") .. "/tmp/extract-expiry-" .. ngx.escape_uri(domain)
     local file, file_err = io.open(cert_pem_path, "w")
     if file_err then
-      ngx.log(ngx.ERR, "auto-ssl: write expiry cert file for " .. domain .. " failed: ", file_err)
+      ngx.log(ngx.ERR, "[auto-ssl][renewal]: write expiry cert file for " .. domain .. " failed: ", file_err)
     else
       file:write(cert["fullchain_pem"])
       file:close()
 
       local date_result, date_err = shell_blocking.capture_combined({ "openssl", "x509", "-enddate", "-noout", "-in", cert_pem_path })
       if date_err then
-        ngx.log(ngx.ERR, "auto-ssl: failed to extract expiry date from cert: ", date_err)
+        ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to extract expiry date from cert: ", date_err)
       else
         local expiry, parse_err = parse_openssl_time(date_result["output"])
         if parse_err then
-          ngx.log(ngx.ERR, "auto-ssl: failed to parse expiry date: ", parse_err)
+          ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to parse expiry date: ", parse_err)
         else
           cert["expiry"] = expiry
 
           -- Update stored certificate to include expiry information
-          ngx.log(ngx.NOTICE, "auto-ssl: setting expiration date of ",  domain, " to ", cert["expiry"])
+          ngx.log(ngx.NOTICE, "[auto-ssl][renewal]: setting expiration date of ",  domain, " to ", cert["expiry"])
           local _, set_cert_err = storage:set_cert(domain, cert["fullchain_pem"], cert["privkey_pem"], cert["cert_pem"], cert["expiry"])
           if set_cert_err then
-            ngx.log(ngx.ERR, "auto-ssl: failed to update cert: ", set_cert_err)
+            ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to update cert: ", set_cert_err)
           end
         end
       end
 
       local _, remove_err = os.remove(cert_pem_path)
       if remove_err then
-        ngx.log(ngx.ERR, "auto-ssl: failed to remove expiry cert file: ", remove_err)
+        ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to remove expiry cert file: ", remove_err)
       end
     end
   end
 
   -- If expiry date is known, attempt renewal if it's within 30 days.
   if cert["expiry"] then
+    local renew_age_days = auto_ssl_instance:get("renew_age_days")
     local now = ngx.now()
-    if now + (30 * 24 * 60 * 60) < cert["expiry"] then
-      ngx.log(ngx.NOTICE, "auto-ssl: expiry date is more than 30 days out, skipping renewal: ", domain)
+    if now + (renew_age_days * 24 * 60 * 60) < cert["expiry"] then
+      ngx.log(ngx.NOTICE, "[auto-ssl][renewal]: expiry date is more than configured `renew_age_days` days out, skipping renewal: ", domain)
       renew_check_cert_unlock(domain, storage, local_lock, distributed_lock_value)
       return
     end
@@ -146,7 +147,7 @@ local function renew_check_cert(auto_ssl_instance, storage, domain)
   -- Check if domain is still allowed before renewing.
   local allow_domain = auto_ssl_instance:get("allow_domain")
   if not allow_domain(domain, auto_ssl_instance, nil, true) then
-    ngx.log(ngx.NOTICE, "auto-ssl: domain not allowed, not renewing: ", domain)
+    ngx.log(ngx.NOTICE, "[auto-ssl][renewal]: domain not allowed, not renewing: ", domain)
     delete_cert_if_expired(domain, storage, cert)
     renew_check_cert_unlock(domain, storage, local_lock, distributed_lock_value)
     return
@@ -162,17 +163,18 @@ local function renew_check_cert(auto_ssl_instance, storage, domain)
 
   -- Write out the cert.pem value to the location dehydrated expects it for
   -- checking.
+  ngx.log(ngx.ERR, "[auto-ssl][renewal-debug]: running into the renewal of :  "..domain.." expiry_field: "..ngx.http_time(cert["expiry"]))
   local dir = auto_ssl_instance:get("dir") .. "/letsencrypt/certs/" .. domain
   local _, mkdir_err = shell_blocking.capture_combined({ "mkdir", "-p", dir }, { umask = "0022" })
   if mkdir_err then
-    ngx.log(ngx.ERR, "auto-ssl: failed to create letsencrypt/certs dir: ", mkdir_err)
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to create letsencrypt/certs dir: ", mkdir_err)
     renew_check_cert_unlock(domain, storage, local_lock, distributed_lock_value)
     return false, mkdir_err
   end
   local cert_pem_path = dir .. "/cert.pem"
   local file, err = io.open(cert_pem_path, "w")
   if err then
-    ngx.log(ngx.ERR, "auto-ssl: write cert.pem for " .. domain .. " failed: ", err)
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: write cert.pem for " .. domain .. " failed: ", err)
     renew_check_cert_unlock(domain, storage, local_lock, distributed_lock_value)
     return false, err
   end
@@ -184,7 +186,7 @@ local function renew_check_cert(auto_ssl_instance, storage, domain)
   -- configured time for renewals.
   local _, issue_err = ssl_provider.issue_cert(auto_ssl_instance, domain)
   if issue_err then
-    ngx.log(ngx.ERR, "auto-ssl: issuing renewal certificate failed: ", issue_err)
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: issuing renewal certificate failed: ", issue_err)
     delete_cert_if_expired(domain, storage, cert)
   end
 
@@ -196,44 +198,49 @@ local function renew_all_domains(auto_ssl_instance)
   local storage = auto_ssl_instance.storage
   local domains, domains_err = storage:all_cert_domains()
   if domains_err then
-    ngx.log(ngx.ERR, "auto-ssl: failed to fetch all certificate domains: ", domains_err)
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to fetch all certificate domains: ", domains_err)
   else
     -- Randomize the renewal order so that if nginx is reloaded during renewals
     -- or rate limits are hit, the renewals are attempted in a different order
     -- each time (which may allow things to eventually succeed over multiple
     -- renewal attempts).
     shuffle_table(domains)
-
+    ngx.log(ngx.ERR, "[auto-ssl][renewal-debug]: started renewing all domains at: "..tostring(ngx.time())  )
+    local domains_counter = 0
     for _, domain in ipairs(domains) do
-      renew_check_cert(auto_ssl_instance, storage, domain)
+      domains_counter = domains_counter + 1
+      ngx.log(ngx.ERR, "[auto-ssl][renewal-debug]: Domain-counter index is at -> "..tostring(domains_counter)  )
+      renew_check_cert(auto_ssl_instance, storage, string.lower(domain))
     end
+    ngx.log(ngx.ERR, "[auto-ssl][renewal-debug]: endof renewing all domains at: "..tostring(ngx.time()) )
   end
 end
 
 local function do_renew(auto_ssl_instance)
   -- Ensure only 1 worker executes the renewal once per interval.
   if not get_interval_lock("renew", auto_ssl_instance:get("renew_check_interval")) then
+    ngx.log(ngx.ERR, "[auto-ssl][renewal-debug]: can't launch renew, renewal-state is locked for another worker for the renew_check_interval duration")
     return
   end
   local renew_lock, new_renew_lock_err = lock:new("auto_ssl_settings", { exptime = 1800, timeout = 0 })
   if new_renew_lock_err then
-    ngx.log(ngx.ERR, "auto-ssl: failed to create lock: ", new_renew_lock_err)
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to create lock: ", new_renew_lock_err)
     return
   end
   local _, lock_err = renew_lock:lock("renew")
   if lock_err then
-    ngx.log(ngx.ERR, "auto-ssl: failed to obtain lock: ", lock_err)
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to obtain lock: ", lock_err)
     return
   end
 
   local renew_ok, renew_err = pcall(renew_all_domains, auto_ssl_instance)
   if not renew_ok then
-    ngx.log(ngx.ERR, "auto-ssl: failed to run do_renew cycle: ", renew_err)
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to run do_renew cycle: ", renew_err)
   end
 
   local ok, unlock_err = renew_lock:unlock()
   if not ok then
-    ngx.log(ngx.ERR, "auto-ssl: failed to unlock: ", unlock_err)
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to unlock: ", unlock_err)
   end
 end
 
@@ -241,15 +248,21 @@ end
 local function renew(premature, auto_ssl_instance)
   if premature then return end
 
+  local enable_internal_renew_schedule = auto_ssl_instance:get("enable_internal_renew_schedule")
+  if not enable_internal_renew_schedule then
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: stopping the internal renewal recursive schedule; set enable_internal_renew_schedule to true to enable it")
+    return
+  end
+
   local renew_ok, renew_err = pcall(do_renew, auto_ssl_instance)
   if not renew_ok then
-    ngx.log(ngx.ERR, "auto-ssl: failed to run do_renew cycle: ", renew_err)
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to run do_renew cycle: ", renew_err)
   end
 
   local timer_ok, timer_err = ngx.timer.at(auto_ssl_instance:get("renew_check_interval"), renew, auto_ssl_instance)
   if not timer_ok then
     if timer_err ~= "process exiting" then
-      ngx.log(ngx.ERR, "auto-ssl: failed to create timer: ", timer_err)
+      ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to create timer: ", timer_err)
     end
     return
   end
@@ -258,9 +271,12 @@ end
 function _M.spawn(auto_ssl_instance)
   local ok, err = ngx.timer.at(auto_ssl_instance:get("renew_check_interval"), renew, auto_ssl_instance)
   if not ok then
-    ngx.log(ngx.ERR, "auto-ssl: failed to create timer: ", err)
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to create timer: ", err)
     return
   end
 end
+
+-- exposed function to be called from the api vhost, for manual triggered renewals
+_M.do_renew = do_renew
 
 return _M
