@@ -138,4 +138,12 @@ PR: [####3](https://github.com/ubmagh/lua-resty-auto-ssl/pull/3)
 
 ### Features & cutomizations: wave #2
 
-//
+- **`has_certificate()` missed the case-insensitive domain normalization from wave #1** — every other domain-touching path (`do_ssl` in `ssl_certificate.lua`, the renewal job) lowercases the domain before touching shmem/storage, since all cache keys are stored lowercase. The public `auto_ssl:has_certificate(domain)` helper didn't, so a caller passing a mixed-case domain from their own vhost logic (not just `ngx.var.host`, which nginx itself normalizes) could get a false "no cert" for a domain that's actually cached under its lowercased key. Now lowercases `domain` first, matching the other call sites.
+
+  ```lua
+  local has_cert = auto_ssl:has_certificate("Example.com") -- now correctly matches the "example.com" cache entry
+  ```
+
+
+
+PR: [####4](https://github.com/ubmagh/lua-resty-auto-ssl/pull/4)
