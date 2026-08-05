@@ -130,4 +130,20 @@ describe("renewal", function()
       assert.matches("domain not allowed, not renewing: " .. server.tunnel_hostname, error_log, nil, true)
     end
   end)
+
+  it("does not run the internal renewal schedule when enable_internal_renew_schedule is set to false in the options table passed to new()", function()
+    server.start({
+      auto_ssl_pre_new = [[
+        options["renew_check_interval"] = 1
+        options["enable_internal_renew_schedule"] = false
+      ]],
+    })
+
+    -- Wait for the initial renewal timer to fire.
+    ngx.sleep(2)
+
+    local error_log = server.nginx_error_log_tail:read()
+    assert.matches("stopping the internal renewal recursive schedule", error_log, nil, true)
+    assert.Not.matches("checking certificate renewals for", error_log, nil, true)
+  end)
 end)

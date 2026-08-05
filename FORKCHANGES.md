@@ -144,6 +144,16 @@ PR: [####3](https://github.com/ubmagh/lua-resty-auto-ssl/pull/3)
   local has_cert = auto_ssl:has_certificate("Example.com") -- now correctly matches the "example.com" cache entry
   ```
 
+- **`enable_internal_renew_schedule = false` was silently ignored when passed to `.new()`** — the wave #1 default-assignment used `if not options["enable_internal_renew_schedule"] then ... = true end`, which is the standard pattern for defaulting an unset option, but breaks specifically for a boolean whose valid value is `false`: in Lua, `not false` is `true`, so an explicit `false` in the options table got immediately overwritten back to `true` before the option was ever read. It only ever worked when set via `auto_ssl:set("enable_internal_renew_schedule", false)` *after* construction (which is what the earlier example above happened to show) — setting it at construction time, the same way `dir`/`ca`/`allow_domain` are documented, did nothing. Fixed to check `== nil` instead of relying on truthiness, and added a spec test (`renewal_spec.lua`) covering the construction-time path, since none existed for this option before.
+
+  ```lua
+  -- now actually takes effect (previously silently reset to `true`):
+  auto_ssl = (require "resty.auto-ssl").new({
+    dir = "/etc/resty-auto-ssl",
+    enable_internal_renew_schedule = false,
+  })
+  ```
+
 
 
 PR: [####4](https://github.com/ubmagh/lua-resty-auto-ssl/pull/4)
