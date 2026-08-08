@@ -158,6 +158,31 @@ PR: [####3](https://github.com/ubmagh/lua-resty-auto-ssl/pull/3)
 
   Not covered by a spec test — reproducing the stale-connection race deterministically would mean giving the *shared* Redis test instance a real idle timeout, affecting every other spec file that reuses it, which isn't worth it for a change this narrow and reasoned-safe (idempotent ops, unchanged error path when the retry also fails).
 
+- **Redis adapter: optional sorted-set index for renewal, instead of scanning every stored cert on every renewal cycle** — the renewal job previously fetched every domain via `keys_with_suffix(":latest")` (a Redis `KEYS` scan) on every run, then checked each one's expiry individually. New `enable_redis_sorted_list_renewal` option (default `false`, opt-in) instead maintains a Redis sorted set (`certs_zset_store`) scored by each cert's real expiry timestamp: `set_cert`/`delete_cert` keep it up to date (`ZADD`/`ZREM`), and the renewal job fetches only domains actually due soon via `ZRANGEBYSCORE`, instead of listing and filtering the entire keyspace.
 
+  ```lua
+  auto_ssl:set("enable_redis_sorted_list_renewal", true) -- opt in; requires the redis storage adapter
+  ```
+
+  Refined during review before this was considered safe to enable:
+  - The score is the cert's *real* expiry (`cert_expiry_ts`, set independently of any storage TTL), not derived from the storage TTL — the initial version scored off `options["exptime"]`, which doesn't exist at all under `ssl_certs_keys_expire_mode = 0` ("no TTL"), silently excluding every cert stored under that mode from ever being renewed once this option was on. Decoupling the two also means challenge tokens and the `issue_cert_lock` lock key — which only ever set `exptime`, never `cert_expiry_ts` — no longer pollute the sorted set either, which they previously did.
+  - A cert stored by a version of this library old enough to predate the `expiry` field being recorded at all (see the equivalent legacy-backfill handling already in `jobs/renewal.lua`) has nothing to score it with, so it won't enter the sorted set on its own — `scripts/backfill_certs_expiry.sh` (below) covers that case specifically.
+  - Defaulted to `false` (opt-in) rather than `true`, since it's new, not-yet-battle-tested code sitting on the core renewal path — existing deployments upgrading the fork shouldn't get different renewal behavior with no config change on their part.
+
+  **Turn this on as early as possible** — ideally from initial deployment, or as soon as you upgrade to a version of the fork that has it. Every cert written *after* it's enabled is added to the sorted set automatically as a normal side effect of `set_cert`/`delete_cert`; it's only certs that already existed *before* it was turned on that need either of the two migration scripts below at all. Enabling it early (even with an empty or near-empty cert store) means you may never need to run either script for real.
+
+- **`scripts/backfill_certs_expiry.sh`** — prerequisite for `populate_sorted_list.sh` below; run this one first. Finds any existing `<domain>:latest` value with no numeric `expiry` field recorded (certs written by an old enough version of this library) and backfills it by extracting the real `notAfter` date straight from that cert's own stored `fullchain_pem` via `openssl x509 -enddate`, converting it to a timestamp, and rewriting the key with `expiry` set — preserving whatever TTL it already had via a single atomic `SET ... EX`. Defaults to `DRY_RUN=true` (logs what it would change without writing anything) — review that output, then set it to `false` for the real run. Same `SCAN`-based, re-runnable, config-via-variables-at-the-top approach as `populate_sorted_list.sh`:
+
+  ```bash
+  ./scripts/backfill_certs_expiry.sh
+  ```
+
+- **`scripts/populate_sorted_list.sh`** — a one-time, safely re-runnable migration script for existing Redis-backed deployments turning on `enable_redis_sorted_list_renewal` above: without it, every cert that already existed before the option was turned on would be invisible to the sorted-set-based renewal path (it only gets populated automatically for certs written *after* the option is enabled). It `SCAN`s (not `KEYS`, for the same reason as everywhere else in this fork) for existing `<domain>:latest` keys and `ZADD`s each into `certs_zset_store` using the `expiry` already stored in its value. Configure the redis connection settings as plain variables at the top of the script (matching your `redis` adapter options — host/port/auth/db/prefix), then:
+
+  ```bash
+  ./scripts/populate_sorted_list.sh
+  ```
+
+  Any key missing a numeric `expiry` is logged as a warning and skipped rather than failing the whole run — run `backfill_certs_expiry.sh` above first if you're not sure all of your existing certs already have one.
 
 PR: [####4](https://github.com/ubmagh/lua-resty-auto-ssl/pull/4)

@@ -50,7 +50,7 @@ function _M.new(options)
   end
 
   if options["enable_redis_sorted_list_renewal"] == nil then
-    options["enable_redis_sorted_list_renewal"] = true
+    options["enable_redis_sorted_list_renewal"] = false
   end
 
   if not options["renew_check_interval"] then
