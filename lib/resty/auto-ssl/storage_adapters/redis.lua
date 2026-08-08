@@ -161,13 +161,22 @@ function _M.set(self, key, value, options)
   return with_connection(self, function(connection)
     local prefixed = prefixed_key(self, key)
     local ok, err = connection:set(prefixed, value)
-    if ok and options and options["exptime"] then
-      local _, expire_err = connection:expire(prefixed, options["exptime"])
-      if expire_err then
-        ngx.log(ngx.ERR, "[auto-ssl][redis_storage]: failed to set expire: ", expire_err)
+    if ok and options then
+      if options["exptime"] then
+        local _, expire_err = connection:expire(prefixed, options["exptime"])
+        if expire_err then
+          ngx.log(ngx.ERR, "[auto-ssl][redis_storage]: failed to set expire: ", expire_err)
+        end
       end
-      if self.enable_redis_sorted_list_renewal then
-        local _, zadd_err = connection:zadd(_M.certs_zlist, ngx.time() + options["exptime"], prefixed) -- add to sorted list with expiry time as score
+
+      -- cert_expiry_ts is only ever set by storage.lua's set_cert() (never for
+      -- challenge tokens or locks, which only ever set exptime), and carries
+      -- the certificate's real expiry -- independent of exptime, which mode
+      -- 0 ("no TTL") never sets at all. Track by that instead of by storage
+      -- TTL, so every cert ends up in the sorted list regardless of expire
+      -- mode, and non-cert keys never do.
+      if self.enable_redis_sorted_list_renewal and options["cert_expiry_ts"] then
+        local _, zadd_err = connection:zadd(_M.certs_zlist, options["cert_expiry_ts"], prefixed)
         if zadd_err then
           ngx.log(ngx.ERR, "[auto-ssl][redis_storage]: failed to add `", prefixed, "` to sorted list: ", zadd_err)
         end

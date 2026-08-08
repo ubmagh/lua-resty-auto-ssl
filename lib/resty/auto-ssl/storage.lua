@@ -56,41 +56,46 @@ function _M.set_cert(self, domain, fullchain_pem, privkey_pem, cert_pem, expiry)
     return nil, err
   end
 
-  local certs_expiry_cases = {
-    [0]= function () -- disable TTL at all
-            return {}
+  -- cert_expiry_ts carries the certificate's real expiry (independent of
+  -- whatever the storage TTL below is, or whether there's a TTL at all) so
+  -- adapters can track renewal candidates by the cert's actual expiry
+  -- instead of by storage lifecycle -- mode 0 has no exptime at all, but
+  -- still has a real expiry to track.
+  local cert_ttl_func = {
+    [0]= function () -- disables TTL at all
+            return { cert_expiry_ts = tonumber(expiry) }
           end,
-    [1]= function () -- use the configured TTL
-            local exptime = self.ssl_certs_keys_exptime - self.renew_offset_ssl_certs_exptime
-            if exptime < 0 then
-              exptime = self.min_ssl_certs_exptime
+    [1]= function () -- uses the configured flat TTL
+            local ttl = self.ssl_certs_keys_exptime - self.renew_offset_ssl_certs_exptime
+            if ttl < 0 then
+              ttl = self.min_ssl_certs_exptime
               ngx.log(ngx.ERR, "auto-ssl-debug: falling back to minimum expiry time, mode: 1 for domain: "..domain)
             end
-           return { exptime = exptime }
+           return { exptime = ttl, cert_expiry_ts = tonumber(expiry) }
           end,
     [2]= function () -- use the expiry of the cert as TTL
             if not expiry then
-              local exptime = self.ssl_certs_keys_exptime - self.renew_offset_ssl_certs_exptime
-              if exptime < 0 then
-                exptime = self.min_ssl_certs_exptime
+              local ttl = self.ssl_certs_keys_exptime - self.renew_offset_ssl_certs_exptime
+              if ttl < 0 then
+                ttl = self.min_ssl_certs_exptime
                 ngx.log(ngx.ERR, "auto-ssl-debug: falling back to minimum expiry time, mode: 2 for domain: "..domain)
               end
-              return { exptime = exptime }
+              return { exptime = ttl, cert_expiry_ts = tonumber(expiry) }
             end
-            local exptime = tonumber(expiry) - ngx.time() - self.renew_offset_ssl_certs_exptime
-            if exptime < 0 then
-              exptime = self.min_ssl_certs_exptime
+            local ttl = tonumber(expiry) - ngx.time() - self.renew_offset_ssl_certs_exptime
+            if ttl < 0 then
+              ttl = self.min_ssl_certs_exptime
               ngx.log(ngx.ERR, "auto-ssl-debug: falling back to minimum expiry time, mode: 2 for domain: "..domain)
             end
-            return { exptime = exptime }
+            return { exptime = ttl, cert_expiry_ts = tonumber(expiry) }
           end
   }
 
   -- Store the cert under the "latest" alias, which is what this app will use.
-  if certs_expiry_cases[self.ssl_certs_keys_expire_mode] then
-    return self.adapter:set(domain .. ":latest", string, certs_expiry_cases[self.ssl_certs_keys_expire_mode]())
+  if cert_ttl_func[self.ssl_certs_keys_expire_mode] then
+    return self.adapter:set(domain .. ":latest", string, cert_ttl_func[self.ssl_certs_keys_expire_mode]())
   else
-    return self.adapter:set(domain .. ":latest", string, certs_expiry_cases[2]())
+    return self.adapter:set(domain .. ":latest", string, cert_ttl_func[2]())
   end
 end
 
@@ -99,10 +104,11 @@ function _M.delete_cert(self, domain)
 end
 
 function _M.get_certs_for_renewal(self, expiry_threshold, enable_redis_sorted_list_renewal)
+  local keys, err
   if type(self.adapter.keys_with_suffix_under_expiry_threashold) == "function" and enable_redis_sorted_list_renewal then
-    local keys, err = self.adapter:keys_with_suffix_under_expiry_threashold( expiry_threshold)
+    keys, err = self.adapter:keys_with_suffix_under_expiry_threashold( expiry_threshold)
   else 
-    local keys, err = self.adapter:keys_with_suffix(":latest")
+    keys, err = self.adapter:keys_with_suffix(":latest")
   end
   if err then
     return nil, err
