@@ -127,7 +127,7 @@ describe("renewal", function()
       assert.matches("allow_domain (renewal=true): ssl_options=nil", error_log, nil, true)
       assert.Not.matches("allow_domain (renewal=true): ssl_options=table", error_log, nil, true)
       assert.matches("allow_domain (renewal=true): renewal=boolean", error_log, nil, true)
-      assert.matches("domain not allowed, not renewing: " .. server.tunnel_hostname, error_log, nil, true)
+      assert.matches("domain not allowed, not renewing for: " .. server.tunnel_hostname, error_log, nil, true)
     end
   end)
 

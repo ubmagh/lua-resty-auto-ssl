@@ -2,6 +2,8 @@ local redis = require "resty.redis"
 
 local _M = {}
 
+_M.certs_zlist = "certs_zset_store"
+
 local function prefixed_key(self, key)
   if self.options["prefix"] then
     return self.options["prefix"] .. ":" .. key
@@ -21,7 +23,7 @@ function _M.new(auto_ssl_instance)
     options["port"] = 6379
   end
 
-  return setmetatable({ options = options }, { __index = _M })
+  return setmetatable({ options = options, enable_redis_sorted_list_renewal= auto_ssl_instance:get("enable_redis_sorted_list_renewal") }, { __index = _M })
 end
 
 -- Opens a connection for a single operation, pulling one out of the
@@ -164,6 +166,12 @@ function _M.set(self, key, value, options)
       if expire_err then
         ngx.log(ngx.ERR, "[auto-ssl][redis_storage]: failed to set expire: ", expire_err)
       end
+      if self.enable_redis_sorted_list_renewal then
+        local _, zadd_err = connection:zadd(_M.certs_zlist, ngx.time() + options["exptime"], prefixed) -- add to sorted list with expiry time as score
+        if zadd_err then
+          ngx.log(ngx.ERR, "[auto-ssl][redis_storage]: failed to add `", prefixed, "` to sorted list: ", zadd_err)
+        end
+      end
     end
     return ok, err
   end)
@@ -171,7 +179,14 @@ end
 
 function _M.delete(self, key)
   return with_connection(self, function(connection)
-    return connection:expire(prefixed_key(self, key), 0)
+    local prefixed = prefixed_key(self, key)
+    if self.enable_redis_sorted_list_renewal then
+      local _, zrem_err = connection:zrem(_M.certs_zlist, prefixed) -- remove expired keys from the sorted list
+      if zrem_err then
+        ngx.log(ngx.ERR, "[auto-ssl][redis_storage]: failed to remove `", prefixed, "` from sorted list: ", zrem_err)
+      end
+    end
+    return connection:expire(prefixed, 0)
   end)
 end
 
@@ -195,5 +210,28 @@ function _M.keys_with_suffix(self, suffix)
 
   return keys, err
 end
+
+-- custom function using sorted list to get certs for renewal based on expiry threshold (score)
+function _M.keys_with_suffix_under_expiry_threashold(self, expiry_threshold)
+  local keys, err = with_connection(self, function(connection)
+    return connection:zrangebyscore( _M.certs_zlist, 0, expiry_threshold )
+  end)
+
+  if keys and self.options["prefix"] then
+    local unprefixed_keys = {}
+    -- First character past the prefix and a colon
+    local offset = string.len(self.options["prefix"]) + 2
+
+    for _, key in ipairs(keys) do
+      local unprefixed = string.sub(key, offset)
+      table.insert(unprefixed_keys, unprefixed)
+    end
+
+    keys = unprefixed_keys
+  end
+
+  return keys, err
+end
+
 
 return _M

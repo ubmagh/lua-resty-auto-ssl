@@ -107,6 +107,7 @@ local function setup_storage(auto_ssl_instance)
     adapter = storage_adapter_instance,
     json_adapter = json_adapter_instance,
     ssl_certs_keys_expire_mode = auto_ssl_instance:get("ssl_certs_keys_expire_mode"),
+    enable_redis_sorted_list_renewal= auto_ssl_instance:get("enable_redis_sorted_list_renewal"),
     challenge_keys_exptime = auto_ssl_instance:get("challenge_keys_exptime"),
     ssl_certs_keys_exptime = auto_ssl_instance:get("ssl_certs_keys_exptime"),
     renew_offset_ssl_certs_exptime = auto_ssl_instance:get("renew_offset_ssl_certs_exptime"),

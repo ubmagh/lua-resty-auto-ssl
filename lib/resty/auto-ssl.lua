@@ -49,6 +49,10 @@ function _M.new(options)
     options["enable_internal_renew_schedule"] = true -- if u don't have an external triggering system
   end
 
+  if options["enable_redis_sorted_list_renewal"] == nil then
+    options["enable_redis_sorted_list_renewal"] = true
+  end
+
   if not options["renew_check_interval"] then
     options["renew_check_interval"] = 86400 -- 1 day
   end
