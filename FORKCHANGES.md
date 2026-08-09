@@ -188,4 +188,14 @@ PR: [####3](https://github.com/ubmagh/lua-resty-auto-ssl/pull/3)
 
 - **`manual-test/`** — a Docker Compose setup for manually exercising `enable_redis_sorted_list_renewal` and the two migration scripts above, separate from the CI matrix. Installs this fork into an OpenResty image the same way a real deployment would (`luarocks make` against the fork's own rockspec), wired to a real Redis with the option on and `auth`/`db`/`prefix` all actually configured (not just left at defaults). Includes a `cloudflared`-based walkthrough for driving real Let's Encrypt staging issuance by hand when you want to exercise the whole path rather than just the storage/sorted-list mechanics. See `manual-test/README.md`.
 
+##### New options at a glance
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `enable_redis_sorted_list_renewal` | `false` | Redis adapter only. Maintain a sorted set of certs scored by real expiry, so the renewal job fetches only domains actually due soon via `ZRANGEBYSCORE`, instead of scanning and filtering every stored cert on each cycle. Opt-in — turn on as early as possible to avoid ever needing the migration scripts below. |
+
+Also new, not config options:
+- `scripts/backfill_certs_expiry.sh` / `scripts/populate_sorted_list.sh` — migration scripts for adopting `enable_redis_sorted_list_renewal` against certs that already existed before it was turned on (run in that order).
+- `manual-test/` — a Docker Compose setup for manually exercising all of the above end to end, including real issuance via a `cloudflared` tunnel.
+
 PR: [####4](https://github.com/ubmagh/lua-resty-auto-ssl/pull/4)
