@@ -2,6 +2,10 @@ local redis = require "resty.redis"
 
 local _M = {}
 
+-- Base name for the enable_redis_sorted_list_renewal sorted set -- always
+-- run through prefixed_key() at every call site below, same as any other
+-- key, so separate `prefix`-scoped instances sharing one redis db don't
+-- collide on it.
 _M.certs_zlist = "certs_zset_store"
 
 local function prefixed_key(self, key)
@@ -176,7 +180,7 @@ function _M.set(self, key, value, options)
       -- TTL, so every cert ends up in the sorted list regardless of expire
       -- mode, and non-cert keys never do.
       if self.enable_redis_sorted_list_renewal and options["cert_expiry_ts"] then
-        local _, zadd_err = connection:zadd(_M.certs_zlist, options["cert_expiry_ts"], prefixed)
+        local _, zadd_err = connection:zadd(prefixed_key(self, _M.certs_zlist), options["cert_expiry_ts"], prefixed)
         if zadd_err then
           ngx.log(ngx.ERR, "[auto-ssl][redis_storage]: failed to add `", prefixed, "` to sorted list: ", zadd_err)
         end
@@ -190,7 +194,7 @@ function _M.delete(self, key)
   return with_connection(self, function(connection)
     local prefixed = prefixed_key(self, key)
     if self.enable_redis_sorted_list_renewal then
-      local _, zrem_err = connection:zrem(_M.certs_zlist, prefixed) -- remove expired keys from the sorted list
+      local _, zrem_err = connection:zrem(prefixed_key(self, _M.certs_zlist), prefixed) -- remove expired keys from the sorted list
       if zrem_err then
         ngx.log(ngx.ERR, "[auto-ssl][redis_storage]: failed to remove `", prefixed, "` from sorted list: ", zrem_err)
       end
@@ -223,7 +227,7 @@ end
 -- custom function using sorted list to get certs for renewal based on expiry threshold (score)
 function _M.keys_with_suffix_under_expiry_threashold(self, expiry_threshold)
   local keys, err = with_connection(self, function(connection)
-    return connection:zrangebyscore( _M.certs_zlist, 0, expiry_threshold )
+    return connection:zrangebyscore( prefixed_key(self, _M.certs_zlist), 0, expiry_threshold )
   end)
 
   if keys and self.options["prefix"] then

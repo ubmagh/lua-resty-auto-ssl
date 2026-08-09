@@ -62,7 +62,7 @@ curl -vk --resolve "${TUNNEL_HOST}:9443:127.0.0.1" "https://${TUNNEL_HOST}:9443/
 docker compose logs -f app   # "issuing new certificate for <TUNNEL_HOST>"
 REDIS="redis-cli -h localhost -a manual-test-secret --no-auth-warning -n 1"
 $REDIS get "manual-test:${TUNNEL_HOST}:latest"
-$REDIS zscore certs_zset_store "manual-test:${TUNNEL_HOST}:latest"
+$REDIS zscore "manual-test:certs_zset_store" "manual-test:${TUNNEL_HOST}:latest"
 ```
 
 `pkill cloudflared` inside the container when done (or just tear the stack
@@ -81,9 +81,9 @@ $REDIS set "manual-test:example.test:latest" \
 
 # Not in the sorted set yet -- only certs written *through* set_cert after
 # the option was enabled get added automatically. Backfill it:
-$REDIS zscore certs_zset_store "manual-test:example.test:latest"   # (nil)
+$REDIS zscore "manual-test:certs_zset_store" "manual-test:example.test:latest"   # (nil)
 ../scripts/populate_sorted_list.sh
-$REDIS zscore certs_zset_store "manual-test:example.test:latest"   # now set
+$REDIS zscore "manual-test:certs_zset_store" "manual-test:example.test:latest"   # now set
 
 # Trigger a renewal pass on demand (this endpoint is manual-test-only, not
 # part of the real library) and watch for it in the logs:

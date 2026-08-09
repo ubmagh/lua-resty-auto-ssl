@@ -49,10 +49,9 @@ REDIS_DB=""           # leave empty for the default db (0)
 REDIS_KEY_PREFIX=""   # must match the `redis` adapter's `prefix` option, if any; leave empty if unset
 SCAN_COUNT=500        # keys inspected per SCAN batch -- lower this on a heavily loaded instance
 
-# Must match redis.lua's `_M.certs_zlist`. Note this is intentionally used
-# as-is, never run through the adapter's key-prefixing -- redis.lua doesn't
-# prefix it either, so this has to match that behavior exactly, not the
-# per-cert key prefixing above.
+# Must match redis.lua's `_M.certs_zlist`. Like every other key, redis.lua
+# runs this through the adapter's key-prefixing too (via prefixed_key()) --
+# so REDIS_KEY_PREFIX above applies here as well, computed below.
 SORTED_LIST_NAME="certs_zset_store"
 
 redis_cmd() {
@@ -64,8 +63,10 @@ redis_cmd() {
 
 if [ -n "$REDIS_KEY_PREFIX" ]; then
   match_pattern="${REDIS_KEY_PREFIX}:*:latest"
+  sorted_list_key="${REDIS_KEY_PREFIX}:${SORTED_LIST_NAME}"
 else
   match_pattern="*:latest"
+  sorted_list_key="$SORTED_LIST_NAME"
 fi
 
 echo "Scanning for '${match_pattern}' keys on ${REDIS_HOST}:${REDIS_PORT}..."
@@ -99,9 +100,9 @@ while [ "$first_pass" = true ] || [ "$cursor" != "0" ]; do
       continue
     fi
 
-    redis_cmd ZADD "$SORTED_LIST_NAME" "$expiry" "$key" > /dev/null
+    redis_cmd ZADD "$sorted_list_key" "$expiry" "$key" > /dev/null
     migrated=$((migrated + 1))
   done
 done
 
-echo "Done. Added/updated ${migrated} key(s) in '${SORTED_LIST_NAME}', skipped ${skipped} (missing expiry)."
+echo "Done. Added/updated ${migrated} key(s) in '${sorted_list_key}', skipped ${skipped} (missing expiry)."
