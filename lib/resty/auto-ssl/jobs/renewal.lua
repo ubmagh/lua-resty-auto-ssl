@@ -91,7 +91,7 @@ local function renew_check_cert(auto_ssl_instance, storage, domain)
   end
 
   if not cert["fullchain_pem"] then
-    ngx.log(ngx.ERR, "[auto-ssl][renewal]: attempting to renew certificate for domain without certificates in storage: ", domain)
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: attempting to renew certificate for domain without certificates in storage: ", domain) -- this requires a new cert to be issued.
     renew_check_cert_unlock(domain, storage, local_lock, distributed_lock_value)
     return
   end
@@ -147,7 +147,7 @@ local function renew_check_cert(auto_ssl_instance, storage, domain)
   -- Check if domain is still allowed before renewing.
   local allow_domain = auto_ssl_instance:get("allow_domain")
   if not allow_domain(domain, auto_ssl_instance, nil, true) then
-    ngx.log(ngx.NOTICE, "[auto-ssl][renewal]: domain not allowed, not renewing: ", domain)
+    ngx.log(ngx.NOTICE, "[auto-ssl][renewal]: domain not allowed, not renewing for: ", domain," cert to be deleted")
     delete_cert_if_expired(domain, storage, cert)
     renew_check_cert_unlock(domain, storage, local_lock, distributed_lock_value)
     return
@@ -196,9 +196,10 @@ end
 local function renew_all_domains(auto_ssl_instance)
   -- Loop through all known domains and check to see if they should be renewed.
   local storage = auto_ssl_instance.storage
-  local domains, domains_err = storage:all_cert_domains()
+  local expiry_threshold = (auto_ssl_instance:get("renew_age_days") * 24 * 60 * 60) + ngx.time() + 60
+  local domains, domains_err = storage:get_certs_for_renewal( expiry_threshold, auto_ssl_instance:get("enable_redis_sorted_list_renewal") )
   if domains_err then
-    ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to fetch all certificate domains: ", domains_err)
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to fetch all certificate domains, error: ", domains_err)
   else
     -- Randomize the renewal order so that if nginx is reloaded during renewals
     -- or rate limits are hit, the renewals are attempted in a different order
@@ -209,10 +210,10 @@ local function renew_all_domains(auto_ssl_instance)
     local domains_counter = 0
     for _, domain in ipairs(domains) do
       domains_counter = domains_counter + 1
-      ngx.log(ngx.ERR, "[auto-ssl][renewal-debug]: Domain-counter index is at -> "..tostring(domains_counter)  )
+      ngx.log(ngx.ERR, "[auto-ssl][renewal-debug]: Domain-counter is at -> "..tostring(domains_counter)  )
       renew_check_cert(auto_ssl_instance, storage, string.lower(domain))
     end
-    ngx.log(ngx.ERR, "[auto-ssl][renewal-debug]: endof renewing all domains at: "..tostring(ngx.time()) )
+    ngx.log(ngx.ERR, "[auto-ssl][renewal-debug]: ended renewing all domains at: "..tostring(ngx.time()) )
   end
 end
 

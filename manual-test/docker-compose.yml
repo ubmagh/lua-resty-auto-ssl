@@ -1,0 +1,28 @@
+services:
+  redis:
+    image: redis:8.8.1-trixie
+    # Password set so the app's `redis.auth` option (see nginx.conf) has
+    # something real to exercise, matching what a production deployment
+    # would actually look like -- rather than leaving auth untested here.
+    command: ["redis-server", "--requirepass", "manual-test-secret"]
+    ports:
+      # Exposed on the host too, so scripts/populate_sorted_list.sh and
+      # scripts/backfill_certs_expiry.sh can be pointed at REDIS_HOST=localhost
+      # directly from outside Docker, against the same instance the app
+      # container uses.
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  app:
+    build:
+      context: ..
+      dockerfile: manual-test/Dockerfile
+    depends_on:
+      - redis
+    ports:
+      - "8443:9443" # https -- ssl_certificate_by_lua_block
+      - "8080:9080" # http -- acme challenges + /manual-renew
+
+volumes:
+  redis-data:

@@ -138,4 +138,64 @@ PR: [####3](https://github.com/ubmagh/lua-resty-auto-ssl/pull/3)
 
 ### Features & cutomizations: wave #2
 
-//
+- **`has_certificate()` missed the case-insensitive domain normalization from wave #1** — every other domain-touching path (`do_ssl` in `ssl_certificate.lua`, the renewal job) lowercases the domain before touching shmem/storage, since all cache keys are stored lowercase. The public `auto_ssl:has_certificate(domain)` helper didn't, so a caller passing a mixed-case domain from their own vhost logic (not just `ngx.var.host`, which nginx itself normalizes) could get a false "no cert" for a domain that's actually cached under its lowercased key. Now lowercases `domain` first, matching the other call sites.
+
+  ```lua
+  local has_cert = auto_ssl:has_certificate("Example.com") -- now correctly matches the "example.com" cache entry
+  ```
+
+- **`enable_internal_renew_schedule = false` was silently ignored when passed to `.new()`** — the wave #1 default-assignment used `if not options["enable_internal_renew_schedule"] then ... = true end`, which is the standard pattern for defaulting an unset option, but breaks specifically for a boolean whose valid value is `false`: in Lua, `not false` is `true`, so an explicit `false` in the options table got immediately overwritten back to `true` before the option was ever read. It only ever worked when set via `auto_ssl:set("enable_internal_renew_schedule", false)` *after* construction (which is what the earlier example above happened to show) — setting it at construction time, the same way `dir`/`ca`/`allow_domain` are documented, did nothing. Fixed to check `== nil` instead of relying on truthiness, and added a spec test (`renewal_spec.lua`) covering the construction-time path, since none existed for this option before.
+
+  ```lua
+  -- now actually takes effect (previously silently reset to `true`):
+  auto_ssl = (require "resty.auto-ssl").new({
+    dir = "/etc/resty-auto-ssl",
+    enable_internal_renew_schedule = false,
+  })
+  ```
+
+- **Redis adapter: skip re-authenticating pooled connections, and silently retry a stale one instead of logging it as a failure** — `get_connection()` previously ran `AUTH`/`SELECT` on every single `get`/`set`/`delete`/`keys_with_suffix` call, even when the connection it just got was pulled back out of the wave #1 keepalive pool and already had both applied from its prior use. It now checks `connection:get_reused_times()` and only runs `AUTH`/`SELECT` on a genuinely fresh connection, saving 2 round trips per operation on any deployment with `redis.auth`/`redis.db` configured. Separately, a connection sitting idle in the pool can get closed by the other end at any time (Redis's own idle timeout, a NAT/firewall) with no way to detect that ahead of a command — a new `with_connection()` wrapper now retries once on a fresh connection when this happens on a *reused* connection specifically, without logging anything, since every operation it covers (an absolute `SET`, an absolute `EXPIRE`, a read) is naturally idempotent and safe to re-run. A connection whose command failed is always `close()`'d rather than handed back to the pool, which also removes an existing minor noise source: `release_connection()` on an already-broken connection just failed too, logging a second, redundant line on top of the real error.
+
+  Not covered by a spec test — reproducing the stale-connection race deterministically would mean giving the *shared* Redis test instance a real idle timeout, affecting every other spec file that reuses it, which isn't worth it for a change this narrow and reasoned-safe (idempotent ops, unchanged error path when the retry also fails).
+
+- **Redis adapter: optional sorted-set index for renewal, instead of scanning every stored cert on every renewal cycle** — the renewal job previously fetched every domain via `keys_with_suffix(":latest")` (a Redis `KEYS` scan) on every run, then checked each one's expiry individually. New `enable_redis_sorted_list_renewal` option (default `false`, opt-in) instead maintains a Redis sorted set (`certs_zset_store`) scored by each cert's real expiry timestamp: `set_cert`/`delete_cert` keep it up to date (`ZADD`/`ZREM`), and the renewal job fetches only domains actually due soon via `ZRANGEBYSCORE`, instead of listing and filtering the entire keyspace.
+
+  ```lua
+  auto_ssl:set("enable_redis_sorted_list_renewal", true) -- opt in; requires the redis storage adapter
+  ```
+
+  Refined during review before this was considered safe to enable:
+  - The score is the cert's *real* expiry (`cert_expiry_ts`, set independently of any storage TTL), not derived from the storage TTL — the initial version scored off `options["exptime"]`, which doesn't exist at all under `ssl_certs_keys_expire_mode = 0` ("no TTL"), silently excluding every cert stored under that mode from ever being renewed once this option was on. Decoupling the two also means challenge tokens and the `issue_cert_lock` lock key — which only ever set `exptime`, never `cert_expiry_ts` — no longer pollute the sorted set either, which they previously did.
+  - A cert stored by a version of this library old enough to predate the `expiry` field being recorded at all (see the equivalent legacy-backfill handling already in `jobs/renewal.lua`) has nothing to score it with, so it won't enter the sorted set on its own — `scripts/backfill_certs_expiry.sh` (below) covers that case specifically.
+  - Defaulted to `false` (opt-in) rather than `true`, since it's new, not-yet-battle-tested code sitting on the core renewal path — existing deployments upgrading the fork shouldn't get different renewal behavior with no config change on their part.
+  - The sorted set's own name (`certs_zset_store`) is now run through the same `prefixed_key()` every other key already goes through, instead of being used bare regardless of the `redis.prefix` option. Left unprefixed, two separate `prefix`-scoped auto-ssl instances sharing one Redis db would have collided on the same sorted set, mixing each other's domains into one shared renewal candidate list. `scripts/populate_sorted_list.sh` computes the same prefixed name to match.
+
+  **Turn this on as early as possible** — ideally from initial deployment, or as soon as you upgrade to a version of the fork that has it. Every cert written *after* it's enabled is added to the sorted set automatically as a normal side effect of `set_cert`/`delete_cert`; it's only certs that already existed *before* it was turned on that need either of the two migration scripts below at all. Enabling it early (even with an empty or near-empty cert store) means you may never need to run either script for real.
+
+- **`scripts/backfill_certs_expiry.sh`** — prerequisite for `populate_sorted_list.sh` below; run this one first. Finds any existing `<domain>:latest` value with no numeric `expiry` field recorded (certs written by an old enough version of this library) and backfills it by extracting the real `notAfter` date straight from that cert's own stored `fullchain_pem` via `openssl x509 -enddate`, converting it to a timestamp, and rewriting the key with `expiry` set — preserving whatever TTL it already had via a single atomic `SET ... EX`. Defaults to `DRY_RUN=true` (logs what it would change without writing anything) — review that output, then set it to `false` for the real run. Same `SCAN`-based, re-runnable, config-via-variables-at-the-top approach as `populate_sorted_list.sh`:
+
+  ```bash
+  ./scripts/backfill_certs_expiry.sh
+  ```
+
+- **`scripts/populate_sorted_list.sh`** — a one-time, safely re-runnable migration script for existing Redis-backed deployments turning on `enable_redis_sorted_list_renewal` above: without it, every cert that already existed before the option was turned on would be invisible to the sorted-set-based renewal path (it only gets populated automatically for certs written *after* the option is enabled). It `SCAN`s (not `KEYS`, for the same reason as everywhere else in this fork) for existing `<domain>:latest` keys and `ZADD`s each into `certs_zset_store` using the `expiry` already stored in its value. Configure the redis connection settings as plain variables at the top of the script (matching your `redis` adapter options — host/port/auth/db/prefix), then:
+
+  ```bash
+  ./scripts/populate_sorted_list.sh
+  ```
+
+  Any key missing a numeric `expiry` is logged as a warning and skipped rather than failing the whole run — run `backfill_certs_expiry.sh` above first if you're not sure all of your existing certs already have one.
+
+- **`manual-test/`** — a Docker Compose setup for manually exercising `enable_redis_sorted_list_renewal` and the two migration scripts above, separate from the CI matrix. Installs this fork into an OpenResty image the same way a real deployment would (`luarocks make` against the fork's own rockspec), wired to a real Redis with the option on and `auth`/`db`/`prefix` all actually configured (not just left at defaults). Includes a `cloudflared`-based walkthrough for driving real Let's Encrypt staging issuance by hand when you want to exercise the whole path rather than just the storage/sorted-list mechanics. See `manual-test/README.md`.
+
+##### New options at a glance
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `enable_redis_sorted_list_renewal` | `false` | Redis adapter only. Maintain a sorted set of certs scored by real expiry, so the renewal job fetches only domains actually due soon via `ZRANGEBYSCORE`, instead of scanning and filtering every stored cert on each cycle. Opt-in — turn on as early as possible to avoid ever needing the migration scripts below. |
+
+Also new, not config options:
+- `scripts/backfill_certs_expiry.sh` / `scripts/populate_sorted_list.sh` — migration scripts for adopting `enable_redis_sorted_list_renewal` against certs that already existed before it was turned on (run in that order).
+- `manual-test/` — a Docker Compose setup for manually exercising all of the above end to end, including real issuance via a `cloudflared` tunnel.
+
+PR: [####4](https://github.com/ubmagh/lua-resty-auto-ssl/pull/4)

@@ -1,4 +1,6 @@
 return function(auto_ssl_instance, domain, shmem_only)
+  domain = string.lower(domain)
+
   local shmem = ngx.shared.auto_ssl:get("domain:fullchain_der:" .. domain)
   if shmem then
     return true
