@@ -107,7 +107,7 @@ function _M.get_certs_for_renewal(self, expiry_threshold, enable_redis_sorted_li
   local keys, err
   if type(self.adapter.keys_with_suffix_under_expiry_threashold) == "function" and enable_redis_sorted_list_renewal then
     keys, err = self.adapter:keys_with_suffix_under_expiry_threashold( expiry_threshold)
-  else 
+  else
     keys, err = self.adapter:keys_with_suffix(":latest")
   end
   if err then
