@@ -185,4 +185,6 @@ PR: [####3](https://github.com/ubmagh/lua-resty-auto-ssl/pull/3)
 
   Any key missing a numeric `expiry` is logged as a warning and skipped rather than failing the whole run — run `backfill_certs_expiry.sh` above first if you're not sure all of your existing certs already have one.
 
+- **`manual-test/`** — a Docker Compose setup for manually exercising `enable_redis_sorted_list_renewal` and the two migration scripts above, separate from the CI matrix. Installs this fork into an OpenResty image the same way a real deployment would (`luarocks make` against the fork's own rockspec), wired to a real Redis with the option on and `auth`/`db`/`prefix` all actually configured (not just left at defaults). Includes a `cloudflared`-based walkthrough for driving real Let's Encrypt staging issuance by hand when you want to exercise the whole path rather than just the storage/sorted-list mechanics. See `manual-test/README.md`.
+
 PR: [####4](https://github.com/ubmagh/lua-resty-auto-ssl/pull/4)
