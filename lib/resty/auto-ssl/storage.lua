@@ -138,11 +138,12 @@ function _M.issue_cert_lock(self, domain)
   local key = domain .. ":issue_cert_lock"
   local lock_rand_value = str.to_hex(resty_random.bytes(32))
 
-  -- Wait up to 30 seconds for any existing locks to be unlocked.
+  -- Wait up to issue_cert_lock_wait_time seconds for any existing lock to be
+  -- unlocked, polling every issue_cert_lock_poll_interval seconds.
   local unlocked = false
   local wait_time = 0
-  local sleep_time = 0.5
-  local max_time = 30
+  local sleep_time = self.issue_cert_lock_poll_interval
+  local max_time = self.issue_cert_lock_wait_time
   repeat
     local existing_value = self.adapter:get(key)
     if not existing_value then
@@ -153,8 +154,8 @@ function _M.issue_cert_lock(self, domain)
     end
   until unlocked or wait_time > max_time
 
-  -- Create a new lock.
-  local ok, err = self.adapter:set(key, lock_rand_value, { exptime = 30 })
+  -- Create a new lock, held for issue_cert_lock_exptime seconds.
+  local ok, err = self.adapter:set(key, lock_rand_value, { exptime = self.issue_cert_lock_exptime })
   if not ok then
     return nil, err
   else

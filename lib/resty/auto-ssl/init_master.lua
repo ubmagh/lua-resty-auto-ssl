@@ -112,6 +112,9 @@ local function setup_storage(auto_ssl_instance)
     ssl_certs_keys_exptime = auto_ssl_instance:get("ssl_certs_keys_exptime"),
     renew_offset_ssl_certs_exptime = auto_ssl_instance:get("renew_offset_ssl_certs_exptime"),
     min_ssl_certs_exptime = auto_ssl_instance:get("min_ssl_certs_exptime"),
+    issue_cert_lock_wait_time = auto_ssl_instance:get("issue_cert_lock_wait_time"),
+    issue_cert_lock_poll_interval = auto_ssl_instance:get("issue_cert_lock_poll_interval"),
+    issue_cert_lock_exptime = auto_ssl_instance:get("issue_cert_lock_exptime"),
   })
   auto_ssl_instance.storage = storage_instance
 end

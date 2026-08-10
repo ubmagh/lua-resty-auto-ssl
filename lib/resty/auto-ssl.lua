@@ -85,6 +85,18 @@ function _M.new(options)
     options["renew_age_days"] = 30 -- 30 days default
   end
 
+  if not options["issue_cert_lock_wait_time"] then
+    options["issue_cert_lock_wait_time"] = 30 -- max seconds to wait for an in-progress issuance lock to clear
+  end
+
+  if not options["issue_cert_lock_poll_interval"] then
+    options["issue_cert_lock_poll_interval"] = 0.5 -- seconds between polls while waiting on the above
+  end
+
+  if not options["issue_cert_lock_exptime"] then
+    options["issue_cert_lock_exptime"] = 30 -- how long the lock itself is held once acquired, in seconds
+  end
+
   local self =  setmetatable({ options = options }, { __index = _M })
   _M.singleton_instance = self
   return self
