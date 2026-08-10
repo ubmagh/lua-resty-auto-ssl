@@ -50,7 +50,7 @@ local function delete_cert_if_expired(domain, storage, cert)
   -- Give up on renewing this certificate if we didn't manage to renew
   -- it before the expiration date
   if cert["expiry"] and cert["expiry"] < ngx.now() then
-    ngx.log(ngx.WARN, "[auto-ssl][renewal]: existing certificate is expired, deleting: ", domain)
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: existing certificate is expired, deleting: ", domain)
     storage:delete_cert(domain)
   end
 end
@@ -147,7 +147,7 @@ local function renew_check_cert(auto_ssl_instance, storage, domain)
   -- Check if domain is still allowed before renewing.
   local allow_domain = auto_ssl_instance:get("allow_domain")
   if not allow_domain(domain, auto_ssl_instance, nil, true) then
-    ngx.log(ngx.NOTICE, "[auto-ssl][renewal]: domain not allowed, not renewing for: ", domain," cert to be deleted")
+    ngx.log(ngx.NOTICE, "[auto-ssl][renewal]: domain not allowed, not renewing: ", domain)
     delete_cert_if_expired(domain, storage, cert)
     renew_check_cert_unlock(domain, storage, local_lock, distributed_lock_value)
     return
