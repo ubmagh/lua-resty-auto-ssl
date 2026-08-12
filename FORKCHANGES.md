@@ -3,16 +3,9 @@
 
 ### Remove OCSP stapling support
 
-OCSP stapling has been dropped (`ocsp_stapling_error_level` option, `get_ocsp_response`/`set_ocsp_stapling` in `ssl_certificate.lua`, and the `ngx.ocsp` dependency). Most CAs have deprecated or fully shut down OCSP in favor of CRLs, so this code path was querying infrastructure that increasingly no longer exists:
+Dropped OCSP stapling (`ocsp_stapling_error_level`, `get_ocsp_response`/`set_ocsp_stapling` in `ssl_certificate.lua`, the `ngx.ocsp` dependency). Most CAs have deprecated or shut down OCSP in favor of CRLs, so this was querying infrastructure that increasingly doesn't exist: CA/Browser Forum made OCSP optional (CRLs mandatory) starting March 2024, and Let's Encrypt completed its own OCSP shutdown August 6, 2025.
 
-- CA/Browser Forum made OCSP optional for CAs (and CRLs mandatory) starting March 2024.
-- Let's Encrypt announced its OCSP shutdown in December 2024 and completed it on August 6, 2025 — its OCSP responders are offline and certificates no longer include OCSP URLs.
-
-References:
-- https://letsencrypt.org/2024/12/05/ending-ocsp
-- https://letsencrypt.org/2025/08/06/ocsp-service-has-reached-end-of-life
-- https://community.letsencrypt.org/t/ending-ocsp-support-in-2025/229786
-
+References: [LE ending OCSP](https://letsencrypt.org/2024/12/05/ending-ocsp) · [OCSP EOL](https://letsencrypt.org/2025/08/06/ocsp-service-has-reached-end-of-life) · [community thread](https://community.letsencrypt.org/t/ending-ocsp-support-in-2025/229786)
 
 PR: [####1](https://github.com/ubmagh/lua-resty-auto-ssl/pull/1)
 
@@ -20,27 +13,25 @@ PR: [####1](https://github.com/ubmagh/lua-resty-auto-ssl/pull/1)
 
 ### CI fixes
 
-Bumped the OpenResty base images used by the GitHub Actions test matrix (`centos`, `ubuntu`, `alpine`), which had been pinned for years and had accumulated several dead external dependencies along the way. `openresty1.13` and `lua51` were left on their original old pinned versions, since those two variants exist specifically to test backward compatibility with older OpenResty releases.
+Bumped the OpenResty base images for `centos`/`ubuntu`/`alpine` (pinned for years, dead dependencies had piled up). `openresty1.13`/`lua51` stay on their original old versions deliberately — they exist to test backward compat. Fixed one broken dependency at a time as they surfaced:
 
-Fixed one broken dependency at a time as they surfaced:
-
-- **Dead `git://` protocol** — `luarocks-fetch-gitrec` clones over the raw git protocol (port 9418), which GitHub silently drops connections on since deprecating it. Fixed with a global `git config url."https://github.com/".insteadOf git://github.com/` rewrite.
-- **Dead CentOS 7 mirrors** — `mirrorlist.centos.org`/`mirror.centos.org` no longer serve CentOS 7 (EOL), so `yum` couldn't resolve any repo. Rewritten to `vault.centos.org` via `sed` on the repo files.
-- **Alpine's `lua` package** — no longer ships a plain `/usr/bin/lua` binary (only `lua5.1` does), which broke building the `process` rock. Switched to installing `lua5.1` explicitly.
-- **`sockproc` build failure** — the vendored `sockproc.c` (fetched at build time) has a K&R-style `proc_exit()` prototype that modern GCC rejects under `-Werror`. Switched the source to [communiteq/sockproc](https://github.com/communiteq/sockproc), a maintained fork with that exact fix applied upstream.
-- **LuaRocks manifest too large for old Lua 5.1** — the LuaRocks bundled in the old pinned `openresty1.13`/`lua51` images predates a fix (LuaRocks 3.12) for the public manifest outgrowing Lua 5.1's 65536-constants-per-chunk bytecode limit. Built LuaRocks 3.13.0 from source against the bundled LuaJIT for those two variants only.
-- **Old GCC rejects C99 syntax** — the same `openresty1.13`/`lua51` images ship a GCC that defaults to `gnu89`, which rejects the C99-style `for` loop declarations used by `luasystem` (a transitive `busted` dependency). Set `luarocks config variables.CFLAGS "-O2 -fPIC -std=gnu99"` for those two variants.
-- **Expired fallback test fixture** — `spec/certs/example_fallback.crt` was a static, self-signed dummy cert generated in 2016 with a 10-year validity window, which lapsed on 2026-03-27. Any test that fell back to it (for any reason) failed with a misleading "certificate has expired" error, unrelated to the actual cert/domain under test. Regenerated with a fresh far-future expiry (2046).
-- **ngrok free tier no longer usable** — it intercepts ACME HTTP-01 challenges on its own managed dev-domain, so real Let's Encrypt issuance could never complete. Replaced ngrok with Cloudflare Tunnel (`cloudflared` quick tunnels) across all 5 Docker images and the test harness — anonymous, no account/token required, and the challenge path passes through untouched.
-- **Unpinned `cloudflared` version** — the initial Cloudflare Tunnel install used a different unpinned method per distro (yum repo, apt repo, GitHub `releases/latest`), so the 5 images could silently drift to different `cloudflared` builds depending on build time. Standardized all 5 Dockerfiles on the same pinned GitHub release binary.
-- **`dehydrated` requires `hexdump`, which none of the images installed** — dehydrated checks for it at startup and exits immediately if it's missing, before attempting any ACME work at all. This single missing binary was silently causing every cert-issuing test to fail (falling back to the self-signed fallback cert, missing working directories dehydrated never got to create, mismatched error-text assertions for scenarios never reached) despite looking like several unrelated bugs. Added the package that provides it per distro: `util-linux` (the 3 CentOS-based images), `bsdextrautils` (ubuntu), `hexdump` (alpine).
-- **Stale Let's Encrypt staging trust bundle** — `spec/certs/letsencrypt_staging_chain.pem` (used by the test harness to trust Let's Encrypt's staging root, since staging certs aren't in any public trust store) hardcoded the 2016-era `Fake LE Root X1`/`Fake LE Intermediate X1` pair. Let's Encrypt has since rotated staging to entirely different, cryptographically unrelated roots (`(STAGING) Pretend Pear X1` and others). Once real issuance started succeeding (after the `hexdump` fix), every verification failed with `unable to get local issuer certificate` since the bundled trust file didn't match. Rebuilt it from the 4 currently-active staging roots published by Let's Encrypt.
-- Follow-up cleanup of 1st PR: `http_proxy_options` was only ever documented and used for routing OCSP stapling requests through a proxy. With OCSP gone, it had no remaining consumer anywhere in `lib/`. Removed it from the README and deleted `spec/proxy_spec.lua`, which only existed to test that dead option.
-- **Frozen CA trust bundle on the old `openresty1.13`/`lua51` images** — their bundled CA store predates Let's Encrypt's 2025 root rotation entirely, so `curl` can't verify most of the modern internet from inside them, including `luarocks.org` and `github.com`. Bootstrapped a current CA bundle from `curl.se` (one narrowly-scoped insecure fetch, since even that source chains through the same new root) and overwrote the system trust store with it, instead of disabling verification on every subsequent request.
-- **`luarocks config` misparsing its own value** — `luarocks config variables.CFLAGS "-O2 -fPIC -std=gnu99"` failed because the value starts with a dash, so LuaRocks' CLI parser read it as an attempt to pass options rather than the value. Fixed with the standard `--` end-of-options marker: `luarocks config -- variables.CFLAGS "..."`.
-- **`memory_spec.lua` assumed a memory-pressure scenario that no longer reliably applies** — this test cram-fills the shared dict with large (256000-byte) items to force eviction, then expects a *small* subsequent cert-cache write (the real fullchain/privkey DER data, only a few KB) to also force eviction and log a warning. Those two very different sizes likely land in different slab size-classes, and newer nginx shared-dict allocators (bundled in the bumped images) reuse freed space across size classes efficiently enough that the small write no longer reliably needed to evict anything, even with the large dict completely full. Made the `auto_ssl` shared dict's size overridable per-test (`auto_ssl_dict_size` template variable, defaulting to the existing `1m`) and sized it down to `64k` for this test specifically, with filler items closer in size to real cert DER data — so eviction is forced deterministically regardless of allocator size-class behavior, rather than depending on it.
-- **`git://` protocol fix never made it to `lua51`/`openresty1.13`** — the dead-`git://`-protocol fix (see above) was only ever applied to `centos`/`ubuntu`/`alpine`; these two were still blocked on earlier issues (yum mirrors, CA bundle) when that fix landed, so it never got a chance to surface for them until now. Added it to both.
-- **"self signed" vs "self-signed" wasn't just a typo — it's two different OpenSSL versions** — `lua51`/`openresty1.13` are deliberately never bumped, so they still bundle an older OpenSSL that phrases this verify error without a hyphen, while the bumped images' newer OpenSSL uses one. The 14 assertions hardcoding the exact string only ever matched one or the other. Switched them from an exact string match to a pattern (`"^18: self.signed certificate$"`) checking the stable part — the numeric error code — instead of pinning OpenSSL's exact wording, which is free to vary release to release.
+- **Dead `git://` protocol** — GitHub dropped it; `luarocks-fetch-gitrec` needed a `git config url.".insteadOf git://` rewrite to `https://`.
+- **Dead CentOS 7 mirrors** — `mirrorlist.centos.org` is gone (EOL); rewritten to `vault.centos.org`.
+- **Alpine's `lua` package** — no longer ships plain `/usr/bin/lua`; switched to `lua5.1` explicitly.
+- **`sockproc` build failure** — vendored source's K&R prototype rejected by modern GCC; switched to the [communiteq/sockproc](https://github.com/communiteq/sockproc) fork with the fix upstream.
+- **LuaRocks manifest too large for old Lua 5.1** — hit the bytecode constants-per-chunk limit; built LuaRocks 3.13.0 from source for the two pinned images.
+- **Old GCC rejects C99** — `gnu89`-default GCC on the two pinned images chokes on `luasystem`'s C99 `for` loops; set `CFLAGS=-std=gnu99`.
+- **Expired fallback fixture** — the static self-signed `example_fallback.crt` lapsed 2026-03-27; regenerated with a 2046 expiry.
+- **ngrok unusable** — it intercepts ACME HTTP-01 challenges on its own domain; replaced with Cloudflare Tunnel across all 5 images and the test harness.
+- **Unpinned `cloudflared`** — install method varied per distro; standardized on one pinned GitHub release binary everywhere.
+- **Missing `hexdump`** — dehydrated hard-requires it at startup and silently aborts without it, masquerading as several unrelated failures; added the package providing it per distro.
+- **Stale LE staging trust bundle** — hardcoded 2016-era staging roots no longer match LE's rotated staging chain; rebuilt from the 4 currently-active roots.
+- **`http_proxy_options` cleanup** — dead option, only ever used for OCSP proxying; removed from README, deleted its now-pointless spec.
+- **Frozen CA bundle on the two pinned images** — predates LE's 2025 root rotation, breaking `curl` to `luarocks.org`/`github.com`; bootstrapped a fresh bundle from `curl.se`.
+- **`luarocks config` dash-parsing bug** — a value starting with `-` was misread as a flag; fixed with the `--` end-of-options marker.
+- **`memory_spec.lua`'s eviction assumption went stale** — newer nginx shared-dict allocators no longer reliably evict a small write after a large fill; made the dict size overridable per-test and shrunk it with right-sized filler for this test.
+- **`git://` fix missed two images** — the fix above only reached `centos`/`ubuntu`/`alpine` initially (the other two were still blocked on earlier issues); added there too.
+- **"self signed" vs "self-signed"** — different OpenSSL versions on old vs. bumped images phrase this error differently; switched 14 assertions from exact-string to matching the stable numeric error code instead.
 
 PR: [####2](https://github.com/ubmagh/lua-resty-auto-ssl/pull/2)
 
@@ -48,69 +39,44 @@ PR: [####2](https://github.com/ubmagh/lua-resty-auto-ssl/pull/2)
 
 ### Features & cutomizations: wave #1
 
-- **Configurable storage TTLs** — ACME challenge tokens and cached certs can now actually expire in storage instead of persisting indefinitely. Best suited to the Redis storage adapter, since the file adapter's `ngx-timer`-based expiry doesn't hold up for long TTLs (see below). Five related options, and they interact — read all of them before changing any one:
-
-  - `challenge_keys_exptime` (default `3600`, 1h) — TTL for ACME challenge tokens. Independent of everything below.
-  - `ssl_certs_keys_exptime` (default `7776000`, 90 days) — the nominal cert TTL, only used as-is by mode `1`.
-  - `ssl_certs_keys_expire_mode` (default `2`) — how the cert TTL is actually computed:
-    - `0`: no TTL, cert entries never expire.
-    - `1`: flat TTL — always `ssl_certs_keys_exptime` (minus the renewal buffer below).
-    - `2`: dynamic TTL — computed from each cert's *actual* expiry date instead of the flat default, so storage cleans itself up right around when that specific cert would expire anyway, regardless of what CA or profile issued it.
-  - `renew_offset_ssl_certs_exptime` (default `86400`, 1 day) — subtracted from the computed TTL (both modes `1` and `2`), so storage expires *before* the cert is actually dead, leaving the renewal job a buffer to replace it first. Without this, storage could self-delete right as the cert becomes invalid, racing the renewal cycle instead of giving it room to succeed.
-  - `min_ssl_certs_exptime` (default `86400`, 1 day) — floor applied if the subtraction above goes to zero or negative (e.g. a cert already within its buffer window of real expiry when cached, or `ssl_certs_keys_exptime` set smaller than the buffer). Deliberately small: the failure mode this guards against is a near-dead cert getting served from cache far longer than it's actually valid, not storage cleaning up a little early.
+- **Configurable storage TTLs** — certs/challenges can now actually expire in storage. Best suited to Redis (the file adapter's timer-based expiry doesn't hold up for long TTLs). Five options that interact — read together:
+  - `challenge_keys_exptime` (`3600`, 1h) — challenge token TTL, independent of the rest.
+  - `ssl_certs_keys_exptime` (`7776000`, 90d) — nominal cert TTL, only used as-is by mode `1`.
+  - `ssl_certs_keys_expire_mode` (`2`) — `0` no TTL, `1` flat TTL, `2` dynamic (per-cert real expiry).
+  - `renew_offset_ssl_certs_exptime` (`86400`, 1d) — buffer subtracted so storage outlives the cert, giving renewal room to replace it first.
+  - `min_ssl_certs_exptime` (`86400`, 1d) — floor if that subtraction goes non-positive.
 
   ```lua
-  auto_ssl:set("challenge_keys_exptime", 3600)             -- 1 hour
-  auto_ssl:set("ssl_certs_keys_exptime", 7776000)          -- 90 days, only used as-is by mode 1
-  auto_ssl:set("ssl_certs_keys_expire_mode", 2)            -- 0 = no TTL, 1 = flat TTL, 2 = per-cert expiry (default)
-  auto_ssl:set("renew_offset_ssl_certs_exptime", 86400)    -- buffer subtracted from the TTL for renewal to catch up
-  auto_ssl:set("min_ssl_certs_exptime", 86400)             -- floor when that subtraction goes non-positive
+  auto_ssl:set("challenge_keys_exptime", 3600)
+  auto_ssl:set("ssl_certs_keys_exptime", 7776000)
+  auto_ssl:set("ssl_certs_keys_expire_mode", 2)
+  auto_ssl:set("renew_offset_ssl_certs_exptime", 86400)
+  auto_ssl:set("min_ssl_certs_exptime", 86400)
   ```
 
-- **Case-insensitive domain keys in storage** — domains are now normalized to lowercase everywhere they touch storage (cache keys, storage keys, renewals, issuance), instead of only in some code paths. Requests for the same domain in different cases (`Example.com` vs `example.com`) now share one cert/cache entry instead of each triggering its own issuance.
+- **Case-insensitive domain keys** — domains are normalized to lowercase everywhere storage is touched, so `Example.com`/`example.com` share one cert instead of double-issuing.
 
-- **Redis connection lifecycle fix, plus configurable timeouts/keepalive** — the Redis adapter previously never released connections back to the pool correctly: it tried to `set_keepalive` *before* connecting (a no-op, since there's nothing to keep alive yet) and cached the connection in `ngx.ctx` for reuse across a request without ever releasing it afterward, so it just leaked at the end of each request instead of being pooled. Fixed by opening one connection per operation and explicitly releasing it right after that operation completes — deterministic, and doesn't depend on every call site remembering to clean up (which is easy to miss across early-return error paths). Also added `timeouts` and `keepalive` options, previously hardcoded.
+- **Redis connection lifecycle fix + configurable timeouts/keepalive** — connections used to leak (a `set_keepalive` called *before* connecting, then cached in `ngx.ctx` and never released). Now one connection per operation, released deterministically right after. Added `timeouts`/`keepalive` options, previously hardcoded:
 
   ```lua
   auto_ssl:set("redis", {
-    host = "127.0.0.1",
-    port = 6379,
-    timeouts = {
-      conn = 3000,  -- connect timeout, ms
-      send = 3000,  -- send timeout, ms
-      read = 3000,  -- read timeout, ms
-    },
-    keepalive = {
-      keepalive_duration = 300000, -- max idle time in the pool, ms (5 min, check `timeout` setting on redis-side)
-      pool_size = 10,              -- max pooled connections per nginx worker
-    },
+    host = "127.0.0.1", port = 6379,
+    timeouts = { conn = 3000, send = 3000, read = 3000 },
+    keepalive = { keepalive_duration = 300000, pool_size = 10 },
   })
   ```
 
-- **Configurable renewal threshold** — new `renew_age_days` option (default `30`, matching the previous hardcoded behavior) controls how close to expiry a cert needs to be before the renewal job renews it, instead of that window being fixed at 30 days. Takes a plain day count, converted to seconds where it's actually used — unlike the `_exptime`/`_ssl_certs_exptime` options above, which all take raw seconds.
+- **Configurable renewal threshold** — `renew_age_days` (default `30`) replaces the previously-fixed 30-day renewal window: `auto_ssl:set("renew_age_days", 30)`.
+
+- **Manually-triggerable renewal + schedule disable** — `require("resty.auto-ssl.jobs.renewal").do_renew(auto_ssl)` runs a renewal cycle on demand. New `enable_internal_renew_schedule` (default `true`) turns off the internal recursive timer for setups driving renewal purely externally. Manual and scheduled renewals share the same `renew_check_interval` rate-limiting lock by design — one predictable cadence regardless of trigger; lower `renew_check_interval` if you want manual triggers to run more freely.
 
   ```lua
-  auto_ssl:set("renew_age_days", 30) -- renew once a cert is within this many days of expiring
-  ```
-
-- **Manually-triggerable renewal, and an option to disable the internal schedule** — `renewal.lua`'s renewal cycle is now exposed as `require("resty.auto-ssl.jobs.renewal").do_renew(auto_ssl_instance)`, so it can be called on demand (e.g. from a vhost endpoint), instead of only ever running on `auto_ssl`'s own internal recursive timer. New `enable_internal_renew_schedule` option (default `true`) lets that internal timer be turned off entirely for setups that want to drive renewal purely through their own external trigger (cron, admin endpoint, etc.).
-
-  Important: manual and internal-scheduled renewals share the *same* rate-limiting lock, held for `renew_check_interval` (default 1 day) regardless of which one acquired it. This is intentional, not a bug to work around — the goal is one predictable, once-per-interval renewal cadence system-wide, no matter what triggers it. Practical effect: calling the manual trigger will no-op (logs `can't launch renew, renewal-state is locked for another worker`) if a renewal already ran — from either source — within the last `renew_check_interval`. If you want manual triggers to run more freely, lower `renew_check_interval` itself rather than expecting the two paths to have independent budgets.
-
-  ```lua
-  auto_ssl:set("enable_internal_renew_schedule", false) -- rely entirely on your own external trigger instead
-  ```
-
-  ```lua
-  -- from your own vhost/endpoint (assumes `auto_ssl` was assigned as a global
-  -- in init_by_lua_block, per this project's own README example):
+  auto_ssl:set("enable_internal_renew_schedule", false)
   local renewal = require "resty.auto-ssl.jobs.renewal"
   renewal.do_renew(auto_ssl)
   ```
 
-- **Log messages tagged with their module, for easier filtering** — `ngx.log` calls across the library now read `[auto-ssl][<module>]: ...` (e.g. `[auto-ssl][renewal]:`, `[auto-ssl][redis_storage]:`) instead of a flat `auto-ssl: ...` prefix, so production logs can be filtered per subsystem. A couple of messages that a test still asserts on verbatim (`sanity_spec.lua`) were deliberately left in the old format rather than touched. For the messages that *did* change, rather than hardcode the new prefix into the affected spec assertions (just recreating the same fragility for next time), they were loosened to match the meaningful substring only — the same pattern several assertions already used — so they're robust against this kind of prefix change happening again.
-
-  A subset of these are tagged `[auto-ssl][<module>-debug]:` and logged at `ngx.ERR` deliberately, not by mistake — they're meant for monitoring/dashboards, and `ngx.ERR` is the only level guaranteed to show up regardless of a deployment's configured `error_log` verbosity (nginx's own default minimum is `error`, so anything less severe can silently go missing depending on setup). That collided with the many `assert.Not.matches("[error]", ...)`-style checks across the spec suite, which treat any `[error]`-tagged line as an unexpected failure. Rather than weaken the log level (defeating the point) or touch the ~116 assertions individually, `spec/support/log_tail.lua`'s shared log-reading function now strips lines matching `[auto-ssl][*-debug]:` before the content reaches any assertion — every existing check across the suite is covered from that one place, and a genuine unrelated `[error]` line still fails a test as it should.
+- **Module-tagged log messages** — `ngx.log` calls now read `[auto-ssl][<module>]: ...` instead of a flat `auto-ssl: ...` prefix, filterable per subsystem (a couple of `sanity_spec.lua`-asserted messages were deliberately left alone). Assertions were loosened to match the meaningful substring rather than the full prefix, so future prefix changes don't re-break them. A `[auto-ssl][<module>-debug]:` subset is deliberately logged at `ngx.ERR` (the only level guaranteed visible regardless of configured `error_log` verbosity) for monitoring/dashboards — `spec/support/log_tail.lua` strips those lines before any assertion sees them, so genuine `[error]` lines still fail tests as expected.
 
 ##### New options at a glance
 
@@ -119,18 +85,18 @@ PR: [####2](https://github.com/ubmagh/lua-resty-auto-ssl/pull/2)
 | `challenge_keys_exptime` | `3600` (1h) | TTL for ACME challenge tokens in storage. |
 | `ssl_certs_keys_exptime` | `7776000` (90d) | Nominal cert TTL; only used as-is by expire mode `1`. |
 | `ssl_certs_keys_expire_mode` | `2` | `0` no TTL, `1` flat TTL, `2` dynamic (per-cert expiry). |
-| `renew_offset_ssl_certs_exptime` | `86400` (1d) | Buffer subtracted from the cert TTL so storage expires before the cert, giving renewal room to catch up. |
-| `min_ssl_certs_exptime` | `86400` (1d) | Floor for the TTL if the subtraction above goes non-positive. |
-| `renew_age_days` | `30` | How close to expiry (in days) before the renewal job renews a cert. |
-| `enable_internal_renew_schedule` | `true` | Set `false` to disable the internal recursive renewal timer entirely (e.g. to drive renewal only via your own external trigger). |
+| `renew_offset_ssl_certs_exptime` | `86400` (1d) | Buffer subtracted from the cert TTL so storage expires before the cert. |
+| `min_ssl_certs_exptime` | `86400` (1d) | Floor for the TTL if that subtraction goes non-positive. |
+| `renew_age_days` | `30` | How close to expiry (days) before renewal kicks in. |
+| `enable_internal_renew_schedule` | `true` | `false` disables the internal recursive renewal timer. |
 | `redis` → `timeouts.conn/send/read` | `3000`/`3000`/`3000` (ms) | Redis connect/send/read timeouts. |
-| `redis` → `keepalive.keepalive_duration/pool_size` | `300000` ms / `10` | Redis connection pool idle timeout and size, per nginx worker. |
+| `redis` → `keepalive.keepalive_duration/pool_size` | `300000` ms / `10` | Redis pool idle timeout and size, per worker. |
 
-Also new: `require("resty.auto-ssl.jobs.renewal").do_renew(auto_ssl)`, an exposed function (not a config option) to manually trigger a renewal cycle on demand.
+Also new: `require("resty.auto-ssl.jobs.renewal").do_renew(auto_ssl)` — manual renewal trigger (not a config option).
 
-- **`lua-resty-redis`'s `set_timeouts()` doesn't exist on the two old pinned images** — `openresty1.13`/`lua51` bundle lua-resty-redis 0.25/0.26, and the 3-argument `set_timeouts(conn, send, read)` wasn't added until v0.28 (2020) — calling it unconditionally threw a hard Lua error there ("attempt to call a nil value"), which showed up as a genuine `[error]` failing Redis-adapter tests on those two variants specifically. `redis.lua` now checks whether `connection.set_timeouts` exists before calling it, falling back to the older single-value `set_timeout(ms)` (using the largest of the three configured values) when it doesn't.
-- **Intermittent ACME `NXDOMAIN` failures against the Cloudflare tunnel** — `cloudflared` itself warns that a freshly-announced quick tunnel "may take some time to be reachable": its hostname gets printed to the log before the DNS record has necessarily propagated publicly. The test harness extracted that hostname and immediately started issuing real certs against it, so Let's Encrypt's own validator would occasionally hit the domain before its DNS record had actually propagated, failing with a genuine `NXDOMAIN` unrelated to any of our code (hit both file- and Redis-adapter tests identically, since it happens before either adapter is even reached). `spec/support/server.lua` now polls the tunnel over real HTTPS until it actually responds before letting the rest of the suite proceed, instead of trusting the announcement alone.
-- **Noisy, harmless `[error]` lines from ngx_lua's own cosocket logging on `openresty1.13`** — `"attempt to send data on a closed socket: u:0000..., c:0000..."` flooded the log around `sockproc` startup on that image specifically, failing the suite's blanket "no unexpected `[error]`" checks. Traced to `ngx_http_lua_socket_tcp_send` in `lua-nginx-module` itself: both the `u`/`c` pointers are null in every occurrence, meaning `:send()` is being invoked on a cosocket that was never actually connected or was already torn down — a known, generic ngx_lua diagnostic, not a resolver or kernel compatibility issue (functionality wasn't actually affected; cert issuance completed successfully in the same runs). ngx_lua's own docs recommend disabling this specific log line (`lua_socket_log_errors off;`) once your own Lua code already checks cosocket connect/send errors itself, which every call site in this codebase does. Rather than apply that suite-wide, added a new `TEST_NGINX_SUPPRESS_SOCKET_LOG_ERRORS` env var (set in the `openresty1.13`/`lua51` Dockerfiles only, same pattern as the existing per-image `TEST_NGINX_RESOLVER`) so the test `nginx.conf` only disables this logging on the two old images where it's actually been observed, leaving full error visibility everywhere else.
+- **`lua-resty-redis`'s `set_timeouts()` missing on the two old pinned images** — bundled 0.25/0.26 predates it (added in v0.28); `redis.lua` now checks for it and falls back to `set_timeout(ms)` with the largest configured value.
+- **Intermittent ACME `NXDOMAIN` against the Cloudflare tunnel** — a freshly-announced quick tunnel's hostname can be printed before its DNS record propagates; `spec/support/server.lua` now polls over real HTTPS until it actually responds first.
+- **Noisy harmless `[error]` cosocket logging on `openresty1.13`** — a known ngx_lua diagnostic (`:send()` on a never-connected/torn-down cosocket around sockproc startup), not a real failure. New `TEST_NGINX_SUPPRESS_SOCKET_LOG_ERRORS` env var (set only on the two old images, same pattern as `TEST_NGINX_RESOLVER`) disables just that log line there.
 
 PR: [####3](https://github.com/ubmagh/lua-resty-auto-ssl/pull/3)
 
@@ -138,64 +104,78 @@ PR: [####3](https://github.com/ubmagh/lua-resty-auto-ssl/pull/3)
 
 ### Features & cutomizations: wave #2
 
-- **`has_certificate()` missed the case-insensitive domain normalization from wave #1** — every other domain-touching path (`do_ssl` in `ssl_certificate.lua`, the renewal job) lowercases the domain before touching shmem/storage, since all cache keys are stored lowercase. The public `auto_ssl:has_certificate(domain)` helper didn't, so a caller passing a mixed-case domain from their own vhost logic (not just `ngx.var.host`, which nginx itself normalizes) could get a false "no cert" for a domain that's actually cached under its lowercased key. Now lowercases `domain` first, matching the other call sites.
+- **`has_certificate()` missed wave #1's case-insensitive normalization** — every other domain-touching path lowercases before touching storage; this public helper didn't, so a mixed-case caller could get a false "no cert" for an already-cached domain. Now lowercases first.
 
   ```lua
-  local has_cert = auto_ssl:has_certificate("Example.com") -- now correctly matches the "example.com" cache entry
+  local has_cert = auto_ssl:has_certificate("Example.com") -- now matches the "example.com" entry
   ```
 
-- **`enable_internal_renew_schedule = false` was silently ignored when passed to `.new()`** — the wave #1 default-assignment used `if not options["enable_internal_renew_schedule"] then ... = true end`, which is the standard pattern for defaulting an unset option, but breaks specifically for a boolean whose valid value is `false`: in Lua, `not false` is `true`, so an explicit `false` in the options table got immediately overwritten back to `true` before the option was ever read. It only ever worked when set via `auto_ssl:set("enable_internal_renew_schedule", false)` *after* construction (which is what the earlier example above happened to show) — setting it at construction time, the same way `dir`/`ca`/`allow_domain` are documented, did nothing. Fixed to check `== nil` instead of relying on truthiness, and added a spec test (`renewal_spec.lua`) covering the construction-time path, since none existed for this option before.
+- **`enable_internal_renew_schedule = false` was silently ignored when passed to `.new()`** — the wave #1 default used `if not options[...]`, which in Lua treats `false` the same as unset, silently resetting it back to `true`. Only worked via `auto_ssl:set(...)` after construction. Fixed to check `== nil`; added a spec test, since none existed.
 
   ```lua
-  -- now actually takes effect (previously silently reset to `true`):
   auto_ssl = (require "resty.auto-ssl").new({
     dir = "/etc/resty-auto-ssl",
-    enable_internal_renew_schedule = false,
+    enable_internal_renew_schedule = false, -- now actually takes effect
   })
   ```
 
-- **Redis adapter: skip re-authenticating pooled connections, and silently retry a stale one instead of logging it as a failure** — `get_connection()` previously ran `AUTH`/`SELECT` on every single `get`/`set`/`delete`/`keys_with_suffix` call, even when the connection it just got was pulled back out of the wave #1 keepalive pool and already had both applied from its prior use. It now checks `connection:get_reused_times()` and only runs `AUTH`/`SELECT` on a genuinely fresh connection, saving 2 round trips per operation on any deployment with `redis.auth`/`redis.db` configured. Separately, a connection sitting idle in the pool can get closed by the other end at any time (Redis's own idle timeout, a NAT/firewall) with no way to detect that ahead of a command — a new `with_connection()` wrapper now retries once on a fresh connection when this happens on a *reused* connection specifically, without logging anything, since every operation it covers (an absolute `SET`, an absolute `EXPIRE`, a read) is naturally idempotent and safe to re-run. A connection whose command failed is always `close()`'d rather than handed back to the pool, which also removes an existing minor noise source: `release_connection()` on an already-broken connection just failed too, logging a second, redundant line on top of the real error.
+- **Redis adapter: skip re-auth on pooled connections, silently retry a stale one** — `AUTH`/`SELECT` used to run on every operation even on a reused pooled connection; now skipped via `connection:get_reused_times()`, saving 2 round trips per op when `redis.auth`/`redis.db` are set. A connection closed by the far end while idle in the pool now gets one silent retry on a fresh connection (every op here is naturally idempotent) instead of logging a failure — and a broken connection is always `close()`'d rather than handed back, which also removes a second, redundant "failed to set keepalive" log line that used to follow the real error. Not covered by a spec test (would need a real idle timeout on the *shared* test Redis instance, affecting every other spec file).
 
-  Not covered by a spec test — reproducing the stale-connection race deterministically would mean giving the *shared* Redis test instance a real idle timeout, affecting every other spec file that reuses it, which isn't worth it for a change this narrow and reasoned-safe (idempotent ops, unchanged error path when the retry also fails).
-
-- **Redis adapter: optional sorted-set index for renewal, instead of scanning every stored cert on every renewal cycle** — the renewal job previously fetched every domain via `keys_with_suffix(":latest")` (a Redis `KEYS` scan) on every run, then checked each one's expiry individually. New `enable_redis_sorted_list_renewal` option (default `false`, opt-in) instead maintains a Redis sorted set (`certs_zset_store`) scored by each cert's real expiry timestamp: `set_cert`/`delete_cert` keep it up to date (`ZADD`/`ZREM`), and the renewal job fetches only domains actually due soon via `ZRANGEBYSCORE`, instead of listing and filtering the entire keyspace.
+- **Redis adapter: optional sorted-set index for renewal** — the renewal job used to `KEYS`-scan every stored cert every cycle. New `enable_redis_sorted_list_renewal` (default `false`, opt-in) maintains a Redis sorted set (`certs_zset_store`) scored by real cert expiry (`set_cert`/`delete_cert` keep it current via `ZADD`/`ZREM`), so renewal fetches only domains actually due via `ZRANGEBYSCORE`. Refined before shipping: scored by the cert's real expiry (`cert_expiry_ts`) rather than derived from storage TTL, so mode `0` ("no TTL") certs — which have no TTL to derive from — aren't silently excluded, and challenge/lock keys don't pollute the set; the set's own name is now `prefixed_key()`'d too, so two `prefix`-scoped instances sharing one db don't collide on it. Defaulted off since it's new code on the core renewal path. **Turn it on as early as possible** — only certs that existed *before* it was enabled need the migration scripts below at all.
 
   ```lua
-  auto_ssl:set("enable_redis_sorted_list_renewal", true) -- opt in; requires the redis storage adapter
+  auto_ssl:set("enable_redis_sorted_list_renewal", true) -- requires the redis storage adapter
   ```
 
-  Refined during review before this was considered safe to enable:
-  - The score is the cert's *real* expiry (`cert_expiry_ts`, set independently of any storage TTL), not derived from the storage TTL — the initial version scored off `options["exptime"]`, which doesn't exist at all under `ssl_certs_keys_expire_mode = 0` ("no TTL"), silently excluding every cert stored under that mode from ever being renewed once this option was on. Decoupling the two also means challenge tokens and the `issue_cert_lock` lock key — which only ever set `exptime`, never `cert_expiry_ts` — no longer pollute the sorted set either, which they previously did.
-  - A cert stored by a version of this library old enough to predate the `expiry` field being recorded at all (see the equivalent legacy-backfill handling already in `jobs/renewal.lua`) has nothing to score it with, so it won't enter the sorted set on its own — `scripts/backfill_certs_expiry.sh` (below) covers that case specifically.
-  - Defaulted to `false` (opt-in) rather than `true`, since it's new, not-yet-battle-tested code sitting on the core renewal path — existing deployments upgrading the fork shouldn't get different renewal behavior with no config change on their part.
-  - The sorted set's own name (`certs_zset_store`) is now run through the same `prefixed_key()` every other key already goes through, instead of being used bare regardless of the `redis.prefix` option. Left unprefixed, two separate `prefix`-scoped auto-ssl instances sharing one Redis db would have collided on the same sorted set, mixing each other's domains into one shared renewal candidate list. `scripts/populate_sorted_list.sh` computes the same prefixed name to match.
-
-  **Turn this on as early as possible** — ideally from initial deployment, or as soon as you upgrade to a version of the fork that has it. Every cert written *after* it's enabled is added to the sorted set automatically as a normal side effect of `set_cert`/`delete_cert`; it's only certs that already existed *before* it was turned on that need either of the two migration scripts below at all. Enabling it early (even with an empty or near-empty cert store) means you may never need to run either script for real.
-
-- **`scripts/backfill_certs_expiry.sh`** — prerequisite for `populate_sorted_list.sh` below; run this one first. Finds any existing `<domain>:latest` value with no numeric `expiry` field recorded (certs written by an old enough version of this library) and backfills it by extracting the real `notAfter` date straight from that cert's own stored `fullchain_pem` via `openssl x509 -enddate`, converting it to a timestamp, and rewriting the key with `expiry` set — preserving whatever TTL it already had via a single atomic `SET ... EX`. Defaults to `DRY_RUN=true` (logs what it would change without writing anything) — review that output, then set it to `false` for the real run. Same `SCAN`-based, re-runnable, config-via-variables-at-the-top approach as `populate_sorted_list.sh`:
-
-  ```bash
-  ./scripts/backfill_certs_expiry.sh
-  ```
-
-- **`scripts/populate_sorted_list.sh`** — a one-time, safely re-runnable migration script for existing Redis-backed deployments turning on `enable_redis_sorted_list_renewal` above: without it, every cert that already existed before the option was turned on would be invisible to the sorted-set-based renewal path (it only gets populated automatically for certs written *after* the option is enabled). It `SCAN`s (not `KEYS`, for the same reason as everywhere else in this fork) for existing `<domain>:latest` keys and `ZADD`s each into `certs_zset_store` using the `expiry` already stored in its value. Configure the redis connection settings as plain variables at the top of the script (matching your `redis` adapter options — host/port/auth/db/prefix), then:
-
-  ```bash
-  ./scripts/populate_sorted_list.sh
-  ```
-
-  Any key missing a numeric `expiry` is logged as a warning and skipped rather than failing the whole run — run `backfill_certs_expiry.sh` above first if you're not sure all of your existing certs already have one.
-
-- **`manual-test/`** — a Docker Compose setup for manually exercising `enable_redis_sorted_list_renewal` and the two migration scripts above, separate from the CI matrix. Installs this fork into an OpenResty image the same way a real deployment would (`luarocks make` against the fork's own rockspec), wired to a real Redis with the option on and `auth`/`db`/`prefix` all actually configured (not just left at defaults). Includes a `cloudflared`-based walkthrough for driving real Let's Encrypt staging issuance by hand when you want to exercise the whole path rather than just the storage/sorted-list mechanics. See `manual-test/README.md`.
+- **`scripts/backfill_certs_expiry.sh`** — run first. Backfills a missing `expiry` field (certs from an old enough version of this library) by reading the real `notAfter` off the cert's own `fullchain_pem`, preserving the key's existing TTL. `DRY_RUN=true` by default.
+- **`scripts/populate_sorted_list.sh`** — run second. `SCAN`s existing `<domain>:latest` keys and `ZADD`s each into the sorted set from its stored `expiry`; skips (warns) anything missing one.
+- **`manual-test/`** — a Docker Compose setup for exercising both of the above by hand, including real issuance via a `cloudflared` tunnel. See `manual-test/README.md`.
 
 ##### New options at a glance
 
 | Option | Default | Purpose |
 | --- | --- | --- |
-| `enable_redis_sorted_list_renewal` | `false` | Redis adapter only. Maintain a sorted set of certs scored by real expiry, so the renewal job fetches only domains actually due soon via `ZRANGEBYSCORE`, instead of scanning and filtering every stored cert on each cycle. Opt-in — turn on as early as possible to avoid ever needing the migration scripts below. |
+| `enable_redis_sorted_list_renewal` | `false` | Redis only. Sorted-set renewal index, opt-in. |
 
-Also new, not config options:
-- `scripts/backfill_certs_expiry.sh` / `scripts/populate_sorted_list.sh` — migration scripts for adopting `enable_redis_sorted_list_renewal` against certs that already existed before it was turned on (run in that order).
-- `manual-test/` — a Docker Compose setup for manually exercising all of the above end to end, including real issuance via a `cloudflared` tunnel.
+Also new, not config options: the two migration scripts above (run in that order), and `manual-test/`.
 
 PR: [####4](https://github.com/ubmagh/lua-resty-auto-ssl/pull/4)
+
+---
+
+### Features & cutomizations: wave #3
+
+- **Configurable `issue_cert_lock` timing** — the storage-backed distributed issuance lock had three hardcoded values (wait time, poll interval, hold duration); all three are now options, defaults matching prior behavior. Worth raising if your CA's ACME API is slow/rate-limited: too-short `issue_cert_lock_exptime` lets the lock expire mid-issuance, starting a redundant concurrent attempt for the same domain; too-short `issue_cert_lock_wait_time` makes other concurrent requests give up waiting and issue redundantly too (plus risking the CA's own rate limits).
+
+  ```lua
+  auto_ssl:set("issue_cert_lock_wait_time", 90)
+  auto_ssl:set("issue_cert_lock_poll_interval", 0.5)
+  auto_ssl:set("issue_cert_lock_exptime", 120)
+  ```
+
+- **Imported changes from [negrusti/lua-resty-auto-ssl](https://github.com/negrusti/lua-resty-auto-ssl)** — adapted against this fork's current state rather than cherry-picked (log prefixes, the sorted-list feature, etc. had already diverged). Commits: [4921caa](https://github.com/negrusti/lua-resty-auto-ssl/commit/4921caa7a1c215865eb7629f828bd73d7a7f5a21), [98d16d0](https://github.com/negrusti/lua-resty-auto-ssl/commit/98d16d0d1fa37d5e553a69ac8a5f594b99ee3815), [9befd92](https://github.com/negrusti/lua-resty-auto-ssl/commit/9befd92d20562cb8fdb61f94e7513dbb153f0084), [2c09659](https://github.com/negrusti/lua-resty-auto-ssl/commit/2c096596c09aeb9db06600624a4dd04aaa1e3b10), [8c73530](https://github.com/negrusti/lua-resty-auto-ssl/commit/8c73530ce47a1aca862c8ca2ac495ade2091340e), [7025227](https://github.com/negrusti/lua-resty-auto-ssl/commit/7025227c54dbc0773656c94a83f5bec1eb878ca0):
+
+  - **Renewal's `mkdir`/`openssl` calls now go through the non-blocking sockproc path** (`shell_execute`) instead of `shell-games`'s blocking, `io.popen`-based `capture_combined`, matching how dehydrated itself is already invoked — avoids stalling the whole nginx worker from inside the `ngx.timer`-driven renewal job. Needed an explicit `result["status"] ~= 0` check at each site, since `shell_execute`'s error contract differs. Side effect: the certs dir's permissions now follow the sockproc process's own umask rather than a pinned `0022` — low-risk, that dir only ever holds the public `cert.pem`.
+  - **On-demand renewal** — until now, renewal only ever ran via the periodic sweep or manual `do_renew()`, both full batch sweeps; the actual serving path never checked expiry at all. New opt-in `enable_on_demand_renewal` (default `false`) hooks into `get_cert_der`'s storage-lookup path (not the shmem-cache-hit fast path): if a served cert is within `renew_age_days` of expiring (or expired, or missing an expiry), it fires a non-blocking background renewal for just that domain via new `renewal.renew_domain()`, with zero added latency on the current request. A per-domain dedup lock (`renew_trigger_dedup_time`, default `600`s) throttles re-triggering; on success the in-memory DER cache is cleared so the next request picks up the fresh cert immediately. Defaulted off — same reasoning as `enable_redis_sorted_list_renewal`, this runs on every cache-miss request.
+  - **Concurrency caps, each independently opt-in** — `renew_max_concurrency` and `issue_max_concurrency` (both unset/unlimited by default) cap concurrent on-demand renewals and new issuances respectively, via a shared TTL-guarded slot limiter (`utils/concurrency.lua`). Guards against a burst of simultaneous sockproc invocations exceeding its accept backlog ("connection reset by peer"). Deliberately decoupled from `enable_on_demand_renewal` — turning renewal-on-serve on doesn't force a cap along with it.
+  - **Account-wide ACME order rate limiter** — concurrency caps bound *simultaneous* operations, not Let's Encrypt's rate *over time* (300 orders/3h per account, shared by issuance and renewal). New `utils/acme_rate_limit.lua`, enforced once at `ssl_provider.issue_cert`, via `max_acme_orders` (unset, no limit) and `acme_order_period` (`10800`, matching LE's window). On limit: renewal defers without deleting the existing cert; issuance serves the fallback and logs at `NOTICE`, not `ERR`.
+  - **Lock durations were racing dehydrated's own ~60s timeout** — both local `resty.lock`s (in `ssl_certificate.lua` and `renewal.lua`) had a 30s `exptime`, short enough to auto-release mid-issuance and let a second concurrent order start for the same domain, racing ACME authorizations. Raised to `120`. The distributed `issue_cert_lock` had the identical problem — its defaults above are now raised to match (`90`/`120`) rather than leaving this to be rediscovered.
+  - **Stopped deleting the cert on a renewal failure** — unrecoverable via fallback-to-issuance anyway (same ACME path), so deleting just swapped a real, if expired, cert for the self-signed fallback. Now logs at `ERR` and retries later; deletion is unchanged for the one case that *is* final, `allow_domain` rejecting the domain.
+  - Renewal success is now logged at `NOTICE` with the new expiry (previously silent on success).
+  - Adaptation, not a straight port: their cache-invalidation also clears an OCSP shmem key this fork doesn't have (OCSP support was removed entirely — see PR #1) — only the DER keys are cleared here.
+
+##### New options at a glance
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `issue_cert_lock_wait_time` | `90` (s) | Max wait for an in-progress issuance lock to clear. |
+| `issue_cert_lock_poll_interval` | `0.5` (s) | Poll interval while waiting on the above. |
+| `issue_cert_lock_exptime` | `120` (s) | How long the issuance lock is held once acquired. |
+| `enable_on_demand_renewal` | `false` | Opt-in: check expiry on serve, renew due domains in the background. |
+| `renew_trigger_dedup_time` | `600` (s) | Min time between on-demand triggers for the same domain. |
+| `renew_max_concurrency` | unset (unlimited) | Opt-in cap on concurrent on-demand renewals. |
+| `issue_max_concurrency` | unset (unlimited) | Opt-in cap on concurrent new-certificate issuances. |
+| `max_acme_orders` | unset (no limit) | Opt-in account-wide cap on ACME orders (issuance + renewal) per `acme_order_period`. |
+| `acme_order_period` | `10800` (3h) | Window `max_acme_orders` is measured over. |
+
+PR: [####5](https://github.com/ubmagh/lua-resty-auto-ssl/pull/5)
