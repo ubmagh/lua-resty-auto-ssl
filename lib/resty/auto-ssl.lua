@@ -86,7 +86,7 @@ function _M.new(options)
   end
 
   if not options["issue_cert_lock_wait_time"] then
-    options["issue_cert_lock_wait_time"] = 30 -- max seconds to wait for an in-progress issuance lock to clear
+    options["issue_cert_lock_wait_time"] = 90 -- max seconds to wait for an in-progress issuance lock to clear
   end
 
   if not options["issue_cert_lock_poll_interval"] then
@@ -94,7 +94,38 @@ function _M.new(options)
   end
 
   if not options["issue_cert_lock_exptime"] then
-    options["issue_cert_lock_exptime"] = 30 -- how long the lock itself is held once acquired, in seconds
+    options["issue_cert_lock_exptime"] = 120 -- how long the lock itself is held once acquired, in seconds
+  end
+
+  if options["enable_on_demand_renewal"] == nil then
+    options["enable_on_demand_renewal"] = false -- opt-in: check expiry on every serve and renew due domains in the background
+  end
+
+  if not options["renew_trigger_dedup_time"] then
+    options["renew_trigger_dedup_time"] = 600 -- seconds between on-demand renewal triggers for the same domain
+  end
+
+  -- Max number of on-demand renewals to run concurrently. Left unset (nil)
+  -- by default, meaning unlimited -- opt in by setting a positive integer.
+  -- Each on-demand renewal shells out via sockproc, so an unbounded burst
+  -- under load can exceed sockproc's own accept backlog; set this if you
+  -- enable enable_on_demand_renewal and want that bounded too.
+  -- options["renew_max_concurrency"] = nil
+
+  -- Max number of new-certificate issuances to run concurrently. Left unset
+  -- (nil) by default, meaning unlimited (preserving prior behavior). Set to a
+  -- positive integer to cap concurrent issuance instead of using a custom
+  -- rate-limit in allow_domain.
+  -- options["issue_max_concurrency"] = nil
+
+  -- Account-wide cap on the number of Let's Encrypt orders (issuance AND
+  -- renewal combined, since they share one ACME account/rate limit) allowed
+  -- per acme_order_period. Unset by default (no limit). To stay under LE's
+  -- 300 orders / 3 hours, set e.g. max_acme_orders = 250.
+  -- options["max_acme_orders"] = nil
+
+  if not options["acme_order_period"] then
+    options["acme_order_period"] = 3 * 60 * 60 -- 3 hours, matching LE's window
   end
 
   local self =  setmetatable({ options = options }, { __index = _M })
