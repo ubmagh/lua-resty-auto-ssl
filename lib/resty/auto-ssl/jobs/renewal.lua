@@ -1,4 +1,5 @@
 local concurrency = require "resty.auto-ssl.utils.concurrency"
+local dns_check = require "resty.auto-ssl.utils.dns_check"
 local lock = require "resty.lock"
 local parse_openssl_time = require "resty.auto-ssl.utils.parse_openssl_time"
 local shell_execute = require "resty.auto-ssl.utils.shell_execute"
@@ -154,6 +155,18 @@ local function renew_check_cert(auto_ssl_instance, storage, domain)
   if not allow_domain(domain, auto_ssl_instance, nil, true) then
     ngx.log(ngx.NOTICE, "[auto-ssl][renewal]: domain not allowed, not renewing: ", domain)
     delete_cert_if_expired(domain, storage, cert)
+    renew_check_cert_unlock(domain, storage, local_lock, distributed_lock_value)
+    return
+  end
+
+  -- Skip the ACME attempt entirely if the domain's DNS doesn't actually
+  -- resolve (see dns_check.lua) -- avoids wasting renewal quota on a domain
+  -- that would just fail HTTP-01 validation anyway. Unlike the allow_domain
+  -- rejection above, this isn't treated as final -- DNS can come back, so
+  -- the existing cert is left in place to retry on a later request/sweep,
+  -- same as any other transient renewal failure.
+  if not dns_check(auto_ssl_instance, domain) then
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: DNS check failed, not renewing: ", domain)
     renew_check_cert_unlock(domain, storage, local_lock, distributed_lock_value)
     return
   end

@@ -128,6 +128,20 @@ function _M.new(options)
     options["acme_order_period"] = 3 * 60 * 60 -- 3 hours, matching LE's window
   end
 
+  if options["enable_dns_check_before_issuance"] == nil then
+    options["enable_dns_check_before_issuance"] = false -- opt-in: skip issuance/renewal attempts for domains that don't resolve at all
+  end
+
+  if not options["dns_check_nameservers"] then
+    options["dns_check_nameservers"] = { "8.8.8.8", "1.1.1.1" }
+  end
+
+  -- Stricter, opt-in layer on top of the baseline "does it resolve at all"
+  -- check above: a list of IPs/CNAME targets a resolved domain must match
+  -- (e.g. this server's own public IP(s)) -- otherwise unset, since this
+  -- library can't safely guess a server's own address on its own.
+  -- options["dns_check_allowed_targets"] = nil
+
   local self =  setmetatable({ options = options }, { __index = _M })
   _M.singleton_instance = self
   return self

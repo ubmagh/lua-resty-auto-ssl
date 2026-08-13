@@ -47,6 +47,9 @@ install: check-dependencies
 	install -m 644 lib/resty/auto-ssl/storage_adapters/file.lua $(INST_LUADIR)/resty/auto-ssl/storage_adapters/file.lua
 	install -m 644 lib/resty/auto-ssl/storage_adapters/redis.lua $(INST_LUADIR)/resty/auto-ssl/storage_adapters/redis.lua
 	install -d $(INST_LUADIR)/resty/auto-ssl/utils
+	install -m 644 lib/resty/auto-ssl/utils/acme_rate_limit.lua $(INST_LUADIR)/resty/auto-ssl/utils/acme_rate_limit.lua
+	install -m 644 lib/resty/auto-ssl/utils/concurrency.lua $(INST_LUADIR)/resty/auto-ssl/utils/concurrency.lua
+	install -m 644 lib/resty/auto-ssl/utils/dns_check.lua $(INST_LUADIR)/resty/auto-ssl/utils/dns_check.lua
 	install -m 644 lib/resty/auto-ssl/utils/has_certificate.lua $(INST_LUADIR)/resty/auto-ssl/utils/has_certificate.lua
 	install -m 644 lib/resty/auto-ssl/utils/parse_openssl_time.lua $(INST_LUADIR)/resty/auto-ssl/utils/parse_openssl_time.lua
 	install -m 644 lib/resty/auto-ssl/utils/random_seed.lua $(INST_LUADIR)/resty/auto-ssl/utils/random_seed.lua

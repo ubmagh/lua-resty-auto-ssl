@@ -1,4 +1,5 @@
 local concurrency = require "resty.auto-ssl.utils.concurrency"
+local dns_check = require "resty.auto-ssl.utils.dns_check"
 local lock = require "resty.lock"
 local ssl = require "ngx.ssl"
 local ssl_provider = require "resty.auto-ssl.ssl_providers.lets_encrypt"
@@ -199,6 +200,14 @@ local function get_cert_der(auto_ssl_instance, domain, ssl_options)
 
   -- Finally, issue a new certificate if one hasn't been found yet.
   if not ssl_options or ssl_options["generate_certs"] ~= false then
+    -- Skip the ACME attempt entirely if the domain's DNS doesn't actually
+    -- resolve (here, or to an allowed target -- see dns_check.lua) --
+    -- avoids wasting a real issuance attempt, and the quota that comes with
+    -- one, on a domain that would just fail HTTP-01 validation anyway.
+    if not dns_check(auto_ssl_instance, domain) then
+      return nil, "dns check failed"
+    end
+
     -- Optionally cap the number of concurrent new-certificate issuances
     -- (each shells out to dehydrated via sockproc). When issue_max_concurrency
     -- is set and all slots are busy, skip issuing on this request and serve
@@ -286,6 +295,8 @@ local function do_ssl(auto_ssl_instance, ssl_options)
       ngx.log(ngx.NOTICE, "[auto-ssl][ssl_certificate]: issuance concurrency limit reached - using fallback - ", domain)
     elseif get_cert_der_err == "acme rate limit reached" then
       ngx.log(ngx.NOTICE, "[auto-ssl][ssl_certificate]: ACME rate limit reached - using fallback - ", domain)
+    elseif get_cert_der_err == "dns check failed" then
+      ngx.log(ngx.ERR, "[auto-ssl][ssl_certificate]: DNS check failed, not issuing - using fallback - ", domain)
     else
       ngx.log(ngx.ERR, "[auto-ssl][ssl_certificate]: could not get certificate for ", domain, " - using fallback - ", get_cert_der_err)
     end
