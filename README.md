@@ -418,7 +418,7 @@ To release a new version to LuaRocks:
 ## TODO
 
 - Document and formalize the API for other storage adapters.
-- Open source the MongoDB storage adapter we're using in API Umbrella.
+- ~~Open source the MongoDB storage adapter we're using in API Umbrella.~~ Investigated adding a MongoDB storage adapter to this fork and dropped it: the only pure-Lua, cosocket-based MongoDB client available ([resty-mongol](https://github.com/Olivine-Labs/resty-mongol)) hasn't been updated since 2019 and speaks MongoDB's legacy wire protocol, which the server removed entirely in version 5.1 (2021) — it cannot talk to any currently-supported MongoDB version at all. The other option ([lua-resty-moongoo](https://github.com/isage/lua-resty-moongoo)) depends on a C extension requiring `libbson` and CMake, a much heavier build dependency than anything else this project needs. Revisit if a maintained, `OP_MSG`-speaking pure-Lua (or already-bundled) MongoDB client ever emerges.
 - Add the ability to encrypt data at rest for any storage adapter (based on what we built for API Umbrella's MongoDB storage adapter).
 - We currently rely on [dehydrated](https://github.com/lukas2511/dehydrated) as our Let's Encrypt client. It's called in a non-blocking fashion via [lua-resty-shell](https://github.com/juce/lua-resty-shell) and [sockproc](https://github.com/juce/sockproc), however it might be simpler to eventually replace this approach with a native OpenResty Let's Encrypt client someday.
 
