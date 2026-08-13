@@ -142,6 +142,16 @@ function _M.new(options)
   -- library can't safely guess a server's own address on its own.
   -- options["dns_check_allowed_targets"] = nil
 
+  if options["enable_storage_metrics_logging"] == nil then
+    options["enable_storage_metrics_logging"] = false -- opt-in: log a compact JSON storage snapshot once per renewal cycle, for external log-shipping/dashboards
+  end
+
+  -- Own cadence for storage metrics logging, decoupled from the renewal
+  -- sweep's renew_check_interval. Unset by default -- falls back to
+  -- renew_check_interval at call time, so behavior is unchanged unless set
+  -- explicitly.
+  -- options["storage_metrics_log_interval"] = nil
+
   local self =  setmetatable({ options = options }, { __index = _M })
   _M.singleton_instance = self
   return self

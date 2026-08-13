@@ -1,14 +1,19 @@
 
 # Table of contents
 
-- [Fork changes](#fork-changes)
-  - [Remove OCSP stapling support](#remove-ocsp-stapling-support)
-  - [CI fixes](#ci-fixes)
-  - [Features & cutomizations: wave #1](#wave-1)
-  - [Features & cutomizations: wave #2](#wave-2)
-  - [Features & cutomizations: wave #3](#wave-3)
+- [Table of contents](#table-of-contents)
+  - [Fork changes](#fork-changes)
+    - [Remove OCSP stapling support](#remove-ocsp-stapling-support)
+    - [CI fixes](#ci-fixes)
+    - [Features \& cutomizations: wave #1](#features--cutomizations-wave-1)
+        - [New options at a glance](#new-options-at-a-glance)
+    - [Features \& cutomizations: wave #2](#features--cutomizations-wave-2)
+        - [New options at a glance](#new-options-at-a-glance-1)
+    - [Features \& cutomizations: wave #3](#features--cutomizations-wave-3)
+        - [New options at a glance](#new-options-at-a-glance-2)
+    - [Features \& cutomizations: wave #4](#features--cutomizations-wave-4)
 - [All options at a glance](#all-options-at-a-glance)
-  - [Full example](#full-example)
+    - [Full example](#full-example)
 
 ## Fork changes
 
@@ -208,6 +213,43 @@ PR: [####4](https://github.com/ubmagh/lua-resty-auto-ssl/pull/4)
 
 PR: [####5](https://github.com/ubmagh/lua-resty-auto-ssl/pull/5)
 
+
+
+---
+
+<a id="wave-4"></a>
+### Features & cutomizations: wave #4
+
+- **Storage metrics logging** — opt-in compact JSON snapshot of storage-wide stats, logged once per renewal cycle, for external log shipping (e.g. Elasticsearch) rather than local reading. New `enable_storage_metrics_logging` (default `false`), tagged `[auto-ssl][metrics-debug]:` (same always-visible `-debug` convention as elsewhere in this fork, stripped from spec assertions the same way):
+  - `total` — certs currently in storage.
+  - `exp50`/`exp30`/`exp20` — how many are within 50/30/20 days of expiry.
+
+  ```lua
+  auto_ssl:set("enable_storage_metrics_logging", true) -- opt in
+  -- [auto-ssl][metrics-debug]: {"total":142,"exp50":12,"exp30":5,"exp20":2}
+  ```
+
+  No "new vs. renewed" count — already derivable from the existing per-event log lines (`"issuing new certificate for"` / `"renewed certificate for"`) by any log-shipping pipeline. Does a full storage scan (`storage:all_certs_with_expiry()`), independent of `enable_redis_sorted_list_renewal` (whose index only covers certs due soon); wrapped in its own `pcall` so a scan failure never blocks the actual renewal sweep.
+
+  Rate-limited by its own interval lock rather than sharing the sweep's — new `storage_metrics_log_interval` (unset by default, falls back to `renew_check_interval`) lets metrics log on a different cadence than the sweep itself, and keeps a busy/locked sweep from silently suppressing a metrics log (or vice versa).
+
+  ```lua
+  auto_ssl:set("storage_metrics_log_interval", 300) -- optional: log metrics every 5min, independent of renew_check_interval
+  ```
+
+- **Documented using other ACME certificate authorities** — new [`custom_ca.md`](custom_ca.md): Let's Encrypt (default, real rate limits matching this fork's `acme_order_period`), [ZeroSSL](https://zerossl.com/) (zero extra setup), and [Google Public CA](https://pki.goog/) (needs manual EAB setup — CAA record, `gcloud publicca external-account-keys create`, a `conf.d/custom.sh` entry), each with sourced rate-limit/quota notes. `README.md`'s `ca` option now links here instead of inlining.
+
+- **Investigated and dropped a MongoDB storage adapter** — struck through in `README.md`'s TODO. The only pure-Lua cosocket MongoDB client ([resty-mongol](https://github.com/Olivine-Labs/resty-mongol)) speaks the legacy wire protocol the server removed in 5.1 (2021) — can't talk to any current MongoDB. The alternative ([lua-resty-moongoo](https://github.com/isage/lua-resty-moongoo)) needs a C extension (`libbson` + CMake), too heavy for this project. Revisit if a maintained pure-Lua `OP_MSG` client appears.
+
+##### New options at a glance
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `enable_storage_metrics_logging` | `false` | Opt-in: log a compact JSON storage snapshot once per renewal cycle. |
+| `storage_metrics_log_interval` | unset (falls back to `renew_check_interval`) | Own cadence for metrics logging, decoupled from the renewal sweep. |
+
+PR: [####6](https://github.com/ubmagh/lua-resty-auto-ssl/pull/6)
+
 ---
 
 <a id="all-options-at-a-glance"></a>
@@ -239,8 +281,10 @@ Every option this fork has added, in one place — pulled from the per-wave tabl
 | `enable_dns_check_before_issuance` | `false` | Opt-in: skip issuance/renewal attempts for domains whose DNS doesn't resolve. | [wave #3](#wave-3) |
 | `dns_check_nameservers` | `{"8.8.8.8", "1.1.1.1"}` | Resolvers used for the check above. | [wave #3](#wave-3) |
 | `dns_check_allowed_targets` | unset | Optional stricter check: resolved address/CNAME must match an entry in this list. | [wave #3](#wave-3) |
+| `enable_storage_metrics_logging` | `false` | Opt-in: log a compact JSON storage snapshot once per renewal cycle. | [wave #4](#wave-4) |
+| `storage_metrics_log_interval` | unset (falls back to `renew_check_interval`) | Own cadence for metrics logging, decoupled from the renewal sweep. | [wave #4](#wave-4) |
 
-Also new, not config options: `require("resty.auto-ssl.jobs.renewal").do_renew(auto_ssl)` (manual renewal trigger, [wave #1](#wave-1)); `scripts/backfill_certs_expiry.sh` / `scripts/populate_sorted_list.sh` (Redis sorted-list migration, [wave #2](#wave-2)); `manual-test/` (manual testing setup, [wave #2](#wave-2)).
+Also new, not config options: `require("resty.auto-ssl.jobs.renewal").do_renew(auto_ssl)` (manual renewal trigger, [wave #1](#wave-1)); `scripts/backfill_certs_expiry.sh` / `scripts/populate_sorted_list.sh` (Redis sorted-list migration, [wave #2](#wave-2)); `manual-test/` (manual testing setup, [wave #2](#wave-2)); [`custom_ca.md`](custom_ca.md) (using other ACME CAs, [wave #4](#wave-4)).
 
 ### Full example
 
@@ -292,5 +336,9 @@ local auto_ssl = (require "resty.auto-ssl").new({
   enable_dns_check_before_issuance = false,
   dns_check_nameservers = { "8.8.8.8", "1.1.1.1" },
   dns_check_allowed_targets = nil, -- e.g. { "203.0.113.10" } -- your own server's public IP
+
+  -- storage metrics logging (wave #4) -- opt-in
+  enable_storage_metrics_logging = false,
+  storage_metrics_log_interval = nil, -- e.g. 300 -- own cadence, decoupled from renew_check_interval
 })
 ```
