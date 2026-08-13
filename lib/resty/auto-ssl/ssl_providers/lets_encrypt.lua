@@ -1,9 +1,19 @@
 local _M = {}
 
+local acme_rate_limit = require "resty.auto-ssl.utils.acme_rate_limit"
 local shell_execute = require "resty.auto-ssl.utils.shell_execute"
 
 function _M.issue_cert(auto_ssl_instance, domain)
   assert(type(domain) == "string", "domain must be a string")
+
+  -- Enforce the account-wide Let's Encrypt order rate limit before creating
+  -- an order. Both issuance and renewal funnel through here, so this caps
+  -- the combined order rate against ACME's limits. Callers treat this error
+  -- specially (renewal defers without deleting; issuance serves the
+  -- fallback), rather than logging it as a hard failure.
+  if not acme_rate_limit.allow(auto_ssl_instance:get("max_acme_orders"), auto_ssl_instance:get("acme_order_period")) then
+    return nil, "acme rate limit reached"
+  end
 
   local lua_root = auto_ssl_instance.lua_root
   assert(type(lua_root) == "string", "lua_root must be a string")

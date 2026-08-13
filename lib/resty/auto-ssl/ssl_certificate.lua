@@ -1,6 +1,12 @@
+local concurrency = require "resty.auto-ssl.utils.concurrency"
+local dns_check = require "resty.auto-ssl.utils.dns_check"
 local lock = require "resty.lock"
 local ssl = require "ngx.ssl"
 local ssl_provider = require "resty.auto-ssl.ssl_providers.lets_encrypt"
+
+-- TTL on issuance concurrency slots so they auto-release if a worker dies
+-- mid-issuance (preventing the concurrency budget from leaking).
+local ISSUE_SLOT_TTL = 120
 
 local function convert_to_der_and_cache(domain, cert)
   -- Convert certificate from PEM to DER format.
@@ -56,7 +62,11 @@ end
 local function issue_cert(auto_ssl_instance, storage, domain)
   -- Before issuing a cert, create a local lock to ensure multiple workers
   -- don't simultaneously try to register the same cert.
-  local local_lock, new_local_lock_err = lock:new("auto_ssl", { exptime = 30, timeout = 30 })
+  -- exptime must outlive a full issuance (dehydrated can run up to ~60s, see
+  -- shell_execute's timeout) so the lock isn't auto-released mid-issuance,
+  -- which would let a second concurrent order start for the same domain and
+  -- race its authorizations against the first.
+  local local_lock, new_local_lock_err = lock:new("auto_ssl", { exptime = 120, timeout = 30 })
   if new_local_lock_err then
     ngx.log(ngx.ERR, "[auto-ssl][ssl_certificate]: failed to create lock: ", new_local_lock_err)
     return
@@ -91,12 +101,48 @@ local function issue_cert(auto_ssl_instance, storage, domain)
 
   ngx.log(ngx.NOTICE, "[auto-ssl][ssl_certificate]: issuing new certificate for ", domain)
   cert, err = ssl_provider.issue_cert(auto_ssl_instance, domain)
-  if err then
+  if err and err ~= "acme rate limit reached" then
     ngx.log(ngx.ERR, "[auto-ssl][ssl_certificate]: issuing new certificate failed: ", err)
   end
 
   issue_cert_unlock(domain, storage, local_lock, distributed_lock_value)
   return cert, err
+end
+
+-- When a certificate served from storage is within the renewal window (or
+-- already expired, or missing an expiry date), kick off a non-blocking
+-- background renewal for just that domain (see jobs/renewal.lua's
+-- renew_domain). The current request is still served the existing
+-- certificate with zero added latency; once the renewal completes it clears
+-- the in-memory DER cache so the next request picks up the freshly-issued
+-- cert, instead of continuing to serve the stale cached copy for up to its
+-- cache lifetime (1 hour).
+--
+-- A per-domain dedup lock in the shared dict ensures this only actually
+-- triggers a renewal once per renew_trigger_dedup_time, rather than
+-- spawning a timer (and an ACME attempt) on every single request to an
+-- expiring/expired domain. Opt-in via enable_on_demand_renewal, since this
+-- runs on every cache-miss request and complements (rather than replaces)
+-- the periodic sweep.
+local function maybe_trigger_renewal(auto_ssl_instance, domain, cert)
+  if not auto_ssl_instance:get("enable_on_demand_renewal") then
+    return
+  end
+
+  local expiry = cert["expiry"]
+  local renew_age_days = auto_ssl_instance:get("renew_age_days")
+  if expiry and (expiry - ngx.now()) >= (renew_age_days * 24 * 60 * 60) then
+    return
+  end
+
+  local ok = ngx.shared.auto_ssl:add("domain:renew_hit_lock:" .. domain, true, auto_ssl_instance:get("renew_trigger_dedup_time"))
+  if not ok then
+    return
+  end
+
+  ngx.log(ngx.NOTICE, "[auto-ssl][ssl_certificate]: triggering on-demand renewal for ", domain)
+  local renewal = require "resty.auto-ssl.jobs.renewal"
+  renewal.renew_domain(auto_ssl_instance, domain)
 end
 
 local function get_cert_der(auto_ssl_instance, domain, ssl_options)
@@ -133,6 +179,11 @@ local function get_cert_der(auto_ssl_instance, domain, ssl_options)
   end
 
   if cert and cert["fullchain_pem"] and cert["privkey_pem"] then
+    -- Serve the existing cert, but if it's within the renewal window kick
+    -- off a non-blocking background renewal so expiring/expired certs
+    -- self-heal on access, without waiting for the periodic sweep.
+    maybe_trigger_renewal(auto_ssl_instance, domain, cert)
+
     local cert_der, cert_der_err = convert_to_der_and_cache(domain, cert)
 
     if cert_der_err then
@@ -149,7 +200,37 @@ local function get_cert_der(auto_ssl_instance, domain, ssl_options)
 
   -- Finally, issue a new certificate if one hasn't been found yet.
   if not ssl_options or ssl_options["generate_certs"] ~= false then
-    cert = issue_cert(auto_ssl_instance, storage, domain)
+    -- Skip the ACME attempt entirely if the domain's DNS doesn't actually
+    -- resolve (here, or to an allowed target -- see dns_check.lua) --
+    -- avoids wasting a real issuance attempt, and the quota that comes with
+    -- one, on a domain that would just fail HTTP-01 validation anyway.
+    if not dns_check(auto_ssl_instance, domain) then
+      return nil, "dns check failed"
+    end
+
+    -- Optionally cap the number of concurrent new-certificate issuances
+    -- (each shells out to dehydrated via sockproc). When issue_max_concurrency
+    -- is set and all slots are busy, skip issuing on this request and serve
+    -- the fallback instead; the domain will be retried on a subsequent
+    -- request. This replaces the need for a custom rate-limit in
+    -- allow_domain.
+    local max_issue = auto_ssl_instance:get("issue_max_concurrency")
+    local issue_slot
+    if max_issue then
+      issue_slot = concurrency.acquire("issue_slot:", max_issue, ISSUE_SLOT_TTL)
+      if not issue_slot then
+        return nil, "issuance concurrency limit reached"
+      end
+    end
+
+    local issue_err
+    cert, issue_err = issue_cert(auto_ssl_instance, storage, domain)
+    concurrency.release("issue_slot:", issue_slot)
+
+    if issue_err == "acme rate limit reached" then
+      return nil, "acme rate limit reached"
+    end
+
     if cert and cert["fullchain_pem"] and cert["privkey_pem"] then
       local cert_der, cert_der_err = convert_to_der_and_cache(domain, cert)
       if cert_der_err then
@@ -209,7 +290,13 @@ local function do_ssl(auto_ssl_instance, ssl_options)
   local cert_der, get_cert_der_err = get_cert_der(auto_ssl_instance, domain, ssl_options)
   if get_cert_der_err then
     if get_cert_der_err == "domain not allowed" then
-      ngx.log(ngx.NOTICE, "domain not allowed - using fallback - ", domain)
+      ngx.log(ngx.NOTICE, "[auto-ssl][ssl_certificate]: domain not allowed - using fallback - ", domain)
+    elseif get_cert_der_err == "issuance concurrency limit reached" then
+      ngx.log(ngx.NOTICE, "[auto-ssl][ssl_certificate]: issuance concurrency limit reached - using fallback - ", domain)
+    elseif get_cert_der_err == "acme rate limit reached" then
+      ngx.log(ngx.NOTICE, "[auto-ssl][ssl_certificate]: ACME rate limit reached - using fallback - ", domain)
+    elseif get_cert_der_err == "dns check failed" then
+      ngx.log(ngx.ERR, "[auto-ssl][ssl_certificate]: DNS check failed, not issuing - using fallback - ", domain)
     else
       ngx.log(ngx.ERR, "[auto-ssl][ssl_certificate]: could not get certificate for ", domain, " - using fallback - ", get_cert_der_err)
     end

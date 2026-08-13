@@ -45,7 +45,13 @@ COPY . /app
 # shell-games).
 RUN luarocks make lua-resty-auto-ssl-git-1.rockspec
 
-RUN mkdir -p /etc/resty-auto-ssl && chown nobody:nogroup /etc/resty-auto-ssl
+# `nobody`'s primary group is named differently across distro families --
+# `nogroup` on Debian/Ubuntu (this image's own base), `nobody` on
+# RHEL/CentOS -- detected via `getent` rather than hardcoded, so this still
+# works if the FROM image above is ever swapped to a RedHat-based one.
+RUN mkdir -p /etc/resty-auto-ssl && \
+  nobody_group="$(getent group nobody > /dev/null 2>&1 && echo nobody || echo nogroup)" && \
+  chown "nobody:${nobody_group}" /etc/resty-auto-ssl
 
 COPY manual-test/nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
 

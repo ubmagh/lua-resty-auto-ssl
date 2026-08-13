@@ -225,7 +225,7 @@ function _M.keys_with_suffix(self, suffix)
 end
 
 -- custom function using sorted list to get certs for renewal based on expiry threshold (score)
-function _M.keys_with_suffix_under_expiry_threashold(self, expiry_threshold)
+function _M.keys_with_suffix_under_expiry_threshold(self, expiry_threshold)
   local keys, err = with_connection(self, function(connection)
     return connection:zrangebyscore( prefixed_key(self, _M.certs_zlist), 0, expiry_threshold )
   end)
