@@ -262,12 +262,67 @@ local function renew_all_domains(auto_ssl_instance)
   end
 end
 
+-- Opt-in, compact JSON snapshot of storage-wide stats -- total certs and
+-- how many are within 20/30/50 days of expiry -- logged once per renewal
+-- cycle for external log shipping/dashboards (see FORKCHANGES.md). Tagged
+-- -debug and logged at ngx.ERR so it's always visible regardless of
+-- configured error_log verbosity, same convention as every other
+-- monitoring-oriented log line in this fork -- and, same as those, stripped
+-- from spec assertions by log_tail.lua rather than needing its own
+-- special-casing there.
+--
+-- Always a full enumeration (storage:all_certs_with_expiry), independent of
+-- enable_redis_sorted_list_renewal -- that option's own index only ever
+-- covers certs due soon, not the full set these stats need.
+local function log_storage_metrics(auto_ssl_instance)
+  if not auto_ssl_instance:get("enable_storage_metrics_logging") then
+    return
+  end
+
+  local storage = auto_ssl_instance.storage
+  local certs, err = storage:all_certs_with_expiry()
+  if err then
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to fetch certs for metrics logging: ", err)
+    return
+  end
+
+  local now = ngx.now()
+  local day = 24 * 60 * 60
+  local metrics = { total = 0, exp20 = 0, exp30 = 0, exp50 = 0 }
+
+  for _, cert in ipairs(certs) do
+    metrics.total = metrics.total + 1
+    if cert.expiry then
+      local days_left = (cert.expiry - now) / day
+      if days_left < 50 then metrics.exp50 = metrics.exp50 + 1 end
+      if days_left < 30 then metrics.exp30 = metrics.exp30 + 1 end
+      if days_left < 20 then metrics.exp20 = metrics.exp20 + 1 end
+    end
+  end
+
+  local json, encode_err = storage.json_adapter:encode(metrics)
+  if encode_err then
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to encode storage metrics: ", encode_err)
+    return
+  end
+
+  ngx.log(ngx.ERR, "[auto-ssl][metrics-debug]: ", json)
+end
+
 local function do_renew(auto_ssl_instance)
   -- Ensure only 1 worker executes the renewal once per interval.
   if not get_interval_lock("renew", auto_ssl_instance:get("renew_check_interval")) then
     ngx.log(ngx.ERR, "[auto-ssl][renewal-debug]: can't launch renew, renewal-state is locked for another worker for the renew_check_interval duration")
     return
   end
+
+  -- Independently pcall-guarded so a metrics-logging failure can never
+  -- block the actual renewal sweep below.
+  local metrics_ok, metrics_err = pcall(log_storage_metrics, auto_ssl_instance)
+  if not metrics_ok then
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to log storage metrics: ", metrics_err)
+  end
+
   local renew_lock, new_renew_lock_err = lock:new("auto_ssl_settings", { exptime = 1800, timeout = 0 })
   if new_renew_lock_err then
     ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to create lock: ", new_renew_lock_err)

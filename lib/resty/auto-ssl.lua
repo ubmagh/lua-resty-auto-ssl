@@ -142,6 +142,10 @@ function _M.new(options)
   -- library can't safely guess a server's own address on its own.
   -- options["dns_check_allowed_targets"] = nil
 
+  if options["enable_storage_metrics_logging"] == nil then
+    options["enable_storage_metrics_logging"] = false -- opt-in: log a compact JSON storage snapshot once per renewal cycle, for external log-shipping/dashboards
+  end
+
   local self =  setmetatable({ options = options }, { __index = _M })
   _M.singleton_instance = self
   return self

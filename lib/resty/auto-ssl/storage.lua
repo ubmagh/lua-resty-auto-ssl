@@ -123,6 +123,31 @@ function _M.get_certs_for_renewal(self, expiry_threshold, enable_redis_sorted_li
   return domains
 end
 
+-- Fetches every stored cert's domain + expiry, for storage-wide analytics
+-- (enable_storage_metrics_logging in jobs/renewal.lua). Unlike
+-- get_certs_for_renewal above, this always does a full enumeration
+-- regardless of enable_redis_sorted_list_renewal -- metrics need every
+-- cert, not just the ones currently due soon.
+function _M.all_certs_with_expiry(self)
+  local keys, err = self.adapter:keys_with_suffix(":latest")
+  if err then
+    return nil, err
+  end
+
+  local certs = {}
+  for _, key in ipairs(keys) do
+    local domain = string.lower(ngx.re.sub(key, ":latest$", "", "jo"))
+    local cert, get_err = self:get_cert(domain)
+    if get_err then
+      ngx.log(ngx.ERR, "[auto-ssl][storage]: error fetching certificate for metrics for ", domain, ": ", get_err)
+    elseif cert then
+      table.insert(certs, { domain = domain, expiry = cert["expiry"] })
+    end
+  end
+
+  return certs
+end
+
 -- A simplistic locking mechanism to try and ensure the app doesn't try to
 -- register multiple certificates for the same domain simultaneously.
 --
