@@ -291,6 +291,8 @@ server {
 
 URL of the Let's Encrypt environment to use. Normally you should not set this, unless you want make us of Let's Encrypts [staging environment](https://letsencrypt.org/docs/staging-environment/).
 
+This also accepts the directory URL of any other ACME v2-compatible certificate authority, not just Let's Encrypt — see [custom_ca.md](custom_ca.md) for tested setup steps against ZeroSSL and Google Public CA.
+
 *Example:*
 
 ```lua
