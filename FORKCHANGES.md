@@ -1,4 +1,15 @@
 
+# Table of contents
+
+- [Fork changes](#fork-changes)
+  - [Remove OCSP stapling support](#remove-ocsp-stapling-support)
+  - [CI fixes](#ci-fixes)
+  - [Features & cutomizations: wave #1](#wave-1)
+  - [Features & cutomizations: wave #2](#wave-2)
+  - [Features & cutomizations: wave #3](#wave-3)
+- [All options at a glance](#all-options-at-a-glance)
+  - [Full example](#full-example)
+
 ## Fork changes
 
 ### Remove OCSP stapling support
@@ -37,6 +48,7 @@ PR: [####2](https://github.com/ubmagh/lua-resty-auto-ssl/pull/2)
 
 ---
 
+<a id="wave-1"></a>
 ### Features & cutomizations: wave #1
 
 - **Configurable storage TTLs** — certs/challenges can now actually expire in storage. Best suited to Redis (the file adapter's timer-based expiry doesn't hold up for long TTLs). Five options that interact — read together:
@@ -102,6 +114,7 @@ PR: [####3](https://github.com/ubmagh/lua-resty-auto-ssl/pull/3)
 
 ---
 
+<a id="wave-2"></a>
 ### Features & cutomizations: wave #2
 
 - **`has_certificate()` missed wave #1's case-insensitive normalization** — every other domain-touching path lowercases before touching storage; this public helper didn't, so a mixed-case caller could get a false "no cert" for an already-cached domain. Now lowercases first.
@@ -143,6 +156,7 @@ PR: [####4](https://github.com/ubmagh/lua-resty-auto-ssl/pull/4)
 
 ---
 
+<a id="wave-3"></a>
 ### Features & cutomizations: wave #3
 
 - **Configurable `issue_cert_lock` timing** — the storage-backed distributed issuance lock had three hardcoded values (wait time, poll interval, hold duration), now all options with defaults matching prior behavior. Worth raising if your CA is slow/rate-limited: too-short `issue_cert_lock_exptime` lets the lock expire mid-issuance, starting a redundant concurrent attempt for the same domain; too-short `issue_cert_lock_wait_time` makes other concurrent requests give up waiting and issue redundantly too.
@@ -193,3 +207,90 @@ PR: [####4](https://github.com/ubmagh/lua-resty-auto-ssl/pull/4)
 | `dns_check_allowed_targets` | unset | Optional stricter check: resolved address/CNAME must match an entry in this list. |
 
 PR: [####5](https://github.com/ubmagh/lua-resty-auto-ssl/pull/5)
+
+---
+
+<a id="all-options-at-a-glance"></a>
+# All options at a glance
+
+Every option this fork has added, in one place — pulled from the per-wave tables above, which still have the full "why" for each. When any of these change, both places need updating.
+
+| Option | Default | Purpose | Added in |
+| --- | --- | --- | --- |
+| `challenge_keys_exptime` | `3600` (1h) | TTL for ACME challenge tokens in storage. | [wave #1](#wave-1) |
+| `ssl_certs_keys_exptime` | `7776000` (90d) | Nominal cert TTL; only used as-is by expire mode `1`. | [wave #1](#wave-1) |
+| `ssl_certs_keys_expire_mode` | `2` | `0` no TTL, `1` flat TTL, `2` dynamic (per-cert expiry). | [wave #1](#wave-1) |
+| `renew_offset_ssl_certs_exptime` | `86400` (1d) | Buffer subtracted from the cert TTL so storage expires before the cert. | [wave #1](#wave-1) |
+| `min_ssl_certs_exptime` | `86400` (1d) | Floor for the TTL if that subtraction goes non-positive. | [wave #1](#wave-1) |
+| `renew_age_days` | `30` | How close to expiry (days) before renewal (periodic or on-demand) kicks in. | [wave #1](#wave-1) |
+| `enable_internal_renew_schedule` | `true` | `false` disables the internal recursive renewal timer. | [wave #1](#wave-1) |
+| `redis` → `timeouts.conn/send/read` | `3000`/`3000`/`3000` (ms) | Redis connect/send/read timeouts. | [wave #1](#wave-1) |
+| `redis` → `keepalive.keepalive_duration/pool_size` | `300000` ms / `10` | Redis pool idle timeout and size, per worker. | [wave #1](#wave-1) |
+| `enable_redis_sorted_list_renewal` | `false` | Redis only. Sorted-set renewal index, opt-in. | [wave #2](#wave-2) |
+| `issue_cert_lock_wait_time` | `90` (s) | Max wait for an in-progress issuance lock to clear. | [wave #3](#wave-3) |
+| `issue_cert_lock_poll_interval` | `0.5` (s) | Poll interval while waiting on the above. | [wave #3](#wave-3) |
+| `issue_cert_lock_exptime` | `120` (s) | How long the issuance lock is held once acquired. | [wave #3](#wave-3) |
+| `enable_on_demand_renewal` | `false` | Opt-in: check expiry on serve, renew due domains in the background. | [wave #3](#wave-3) |
+| `renew_trigger_dedup_time` | `600` (s) | Min time between on-demand triggers for the same domain. | [wave #3](#wave-3) |
+| `renew_max_concurrency` | unset (unlimited) | Opt-in cap on concurrent on-demand renewals. | [wave #3](#wave-3) |
+| `issue_max_concurrency` | unset (unlimited) | Opt-in cap on concurrent new-certificate issuances. | [wave #3](#wave-3) |
+| `max_acme_orders` | unset (no limit) | Opt-in account-wide cap on ACME orders (issuance + renewal) per `acme_order_period`. | [wave #3](#wave-3) |
+| `acme_order_period` | `10800` (3h) | Window `max_acme_orders` is measured over. | [wave #3](#wave-3) |
+| `enable_dns_check_before_issuance` | `false` | Opt-in: skip issuance/renewal attempts for domains whose DNS doesn't resolve. | [wave #3](#wave-3) |
+| `dns_check_nameservers` | `{"8.8.8.8", "1.1.1.1"}` | Resolvers used for the check above. | [wave #3](#wave-3) |
+| `dns_check_allowed_targets` | unset | Optional stricter check: resolved address/CNAME must match an entry in this list. | [wave #3](#wave-3) |
+
+Also new, not config options: `require("resty.auto-ssl.jobs.renewal").do_renew(auto_ssl)` (manual renewal trigger, [wave #1](#wave-1)); `scripts/backfill_certs_expiry.sh` / `scripts/populate_sorted_list.sh` (Redis sorted-list migration, [wave #2](#wave-2)); `manual-test/` (manual testing setup, [wave #2](#wave-2)).
+
+### Full example
+
+Every option below, shown with its default, for reference — **not** a recommended starting config. Most are independent, situational toggles: several only apply with the redis adapter, several are opt-in and normally left unset/`nil`, and `dns_check_allowed_targets` needs *your* server's real address, which nothing here can sensibly default to. Read the relevant wave section before changing one.
+
+```lua
+local auto_ssl = (require "resty.auto-ssl").new({
+  dir = "/etc/resty-auto-ssl",
+  ca = "https://acme-v02.api.letsencrypt.org/directory",
+  allow_domain = function(domain) return true end,
+
+  -- storage adapter + redis-specific options (wave #1 / wave #2)
+  storage_adapter = "resty.auto-ssl.storage_adapters.redis", -- only if using redis
+  redis = {
+    host = "127.0.0.1",
+    port = 6379,
+    timeouts = { conn = 3000, send = 3000, read = 3000 },
+    keepalive = { keepalive_duration = 300000, pool_size = 10 },
+  },
+
+  -- storage TTLs (wave #1) -- these five interact, read together
+  challenge_keys_exptime = 3600,
+  ssl_certs_keys_exptime = 7776000,
+  ssl_certs_keys_expire_mode = 2,
+  renew_offset_ssl_certs_exptime = 86400,
+  min_ssl_certs_exptime = 86400,
+
+  -- renewal (wave #1 / wave #3)
+  renew_age_days = 30,
+  enable_internal_renew_schedule = true,
+  enable_on_demand_renewal = false,       -- opt-in
+  renew_trigger_dedup_time = 600,
+
+  -- redis-only sorted-set renewal index (wave #2) -- requires the redis adapter above
+  enable_redis_sorted_list_renewal = false, -- opt-in
+
+  -- issuance locking (wave #3)
+  issue_cert_lock_wait_time = 90,
+  issue_cert_lock_poll_interval = 0.5,
+  issue_cert_lock_exptime = 120,
+
+  -- concurrency + ACME rate limiting (wave #3) -- all opt-in, normally left unset
+  renew_max_concurrency = nil,
+  issue_max_concurrency = nil,
+  max_acme_orders = nil,
+  acme_order_period = 10800,
+
+  -- DNS check before issuance/renewal (wave #3) -- opt-in
+  enable_dns_check_before_issuance = false,
+  dns_check_nameservers = { "8.8.8.8", "1.1.1.1" },
+  dns_check_allowed_targets = nil, -- e.g. { "203.0.113.10" } -- your own server's public IP
+})
+```
