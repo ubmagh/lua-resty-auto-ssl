@@ -98,7 +98,7 @@ describe("expiry", function()
     assert.Not.matches("[emerg]", error_log, nil, true)
   end)
 
-  it("removes cert if expiration has expired and renewal fails", function()
+  it("keeps cert if expiration has expired and renewal fails (only allow_domain rejection removes it)", function()
     server.start({
       auto_ssl_pre_new = [[
         options["renew_check_interval"] = 1
@@ -148,8 +148,12 @@ describe("expiry", function()
     data = assert(cjson.decode(content))
     assert.number(data["expiry"])
 
-    -- Copy the cert to an unresolvable domain to verify that failed renewals
-    -- will be removed.
+    -- Copy the cert to an unresolvable domain to verify that a failed
+    -- renewal leaves the (already-expired) cert in place to retry later,
+    -- instead of deleting it -- a failed renewal isn't recoverable by
+    -- falling back to on-demand issuance (same ACME path, same failure), so
+    -- deleting here would only swap a real cert for the self-signed
+    -- fallback. See FORKCHANGES.md's wave #3 (negrusti-imported changes).
     local unresolvable_cert_path = server.current_test_dir .. "/auto-ssl/storage/file/" .. ngx.escape_uri("unresolvable-sdjfklsdjf.example:latest")
     local _, cp_err = shell_blocking.capture_combined({ "cp", "-p", cert_path, unresolvable_cert_path })
     assert.equal(nil, cp_err)
@@ -164,7 +168,7 @@ describe("expiry", function()
     assert.matches("Ignoring because renew was forced!", error_log, nil, true)
     assert.matches("Domain name does not end with a valid public suffix (TLD)", error_log, nil, true)
     assert.matches("issuing renewal certificate failed: dehydrated failure", error_log, nil, true)
-    assert.matches("existing certificate is expired, deleting: unresolvable-sdjfklsdjf.example", error_log, nil, true)
+    assert.Not.matches("existing certificate is expired, deleting: unresolvable-sdjfklsdjf.example", error_log, nil, true)
 
     -- Verify that the valid cert still remains (despite being marked as
     -- expired).
@@ -173,10 +177,12 @@ describe("expiry", function()
     data = assert(cjson.decode(content))
     assert.number(data["expiry"])
 
-    -- Verify that the failed renewal gets deleted.
-    local file_content, file_err = file.read(unresolvable_cert_path)
-    assert.equal(nil, file_content)
-    assert.matches("No such file or directory", file_err, nil, true)
+    -- Verify that the failed renewal is NOT deleted -- left in place, still
+    -- marked as expired, to retry on a later sweep.
+    local unresolvable_content = assert(file.read(unresolvable_cert_path))
+    assert.string(unresolvable_content)
+    local unresolvable_data = assert(cjson.decode(unresolvable_content))
+    assert.number(unresolvable_data["expiry"])
 
     error_log = server.read_error_log()
     assert.Not.matches("[alert]", error_log, nil, true)
@@ -247,11 +253,13 @@ describe("expiry", function()
     ngx.sleep(5)
 
     -- Verify that the disallowed domain got removed now that the cert was set
-    -- to expire in the past.
+    -- to expire in the past. (The deletion's own confirmation log is tagged
+    -- -debug and deliberately logged at [error] for external monitoring --
+    -- see log_tail.lua -- so it's stripped from here entirely; the actual
+    -- deletion is verified directly below via the file no longer existing.)
     error_log = server.nginx_error_log_tail:read()
     assert.matches("checking certificate renewals for disallowed.example", error_log, nil, true)
     assert.matches("domain not allowed, not renewing: disallowed.example", error_log, nil, true)
-    assert.matches("existing certificate is expired, deleting: disallowed.example", error_log, nil, true)
 
     local file_content, file_err = file.read(disallowed_cert_path)
     assert.equal(nil, file_content)

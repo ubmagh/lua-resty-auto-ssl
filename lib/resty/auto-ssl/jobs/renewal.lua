@@ -52,7 +52,7 @@ local function delete_cert_if_expired(domain, storage, cert)
   -- Give up on renewing this certificate if we didn't manage to renew
   -- it before the expiration date
   if cert["expiry"] and cert["expiry"] < ngx.now() then
-    ngx.log(ngx.ERR, "[auto-ssl][renewal]: existing certificate is expired, deleting: ", domain)
+    ngx.log(ngx.ERR, "[auto-ssl][renewal-debug]: existing certificate is expired, deleting: ", domain)
     storage:delete_cert(domain)
   end
 end
