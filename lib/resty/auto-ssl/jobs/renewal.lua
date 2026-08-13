@@ -263,19 +263,29 @@ local function renew_all_domains(auto_ssl_instance)
 end
 
 -- Opt-in, compact JSON snapshot of storage-wide stats -- total certs and
--- how many are within 20/30/50 days of expiry -- logged once per renewal
--- cycle for external log shipping/dashboards (see FORKCHANGES.md). Tagged
--- -debug and logged at ngx.ERR so it's always visible regardless of
--- configured error_log verbosity, same convention as every other
--- monitoring-oriented log line in this fork -- and, same as those, stripped
--- from spec assertions by log_tail.lua rather than needing its own
--- special-casing there.
+-- how many are within 20/30/50 days of expiry -- logged for external log
+-- shipping/dashboards (see FORKCHANGES.md). Tagged -debug and logged at
+-- ngx.ERR so it's always visible regardless of configured error_log
+-- verbosity, same convention as every other monitoring-oriented log line in
+-- this fork -- and, same as those, stripped from spec assertions by
+-- log_tail.lua rather than needing its own special-casing there.
 --
 -- Always a full enumeration (storage:all_certs_with_expiry), independent of
 -- enable_redis_sorted_list_renewal -- that option's own index only ever
 -- covers certs due soon, not the full set these stats need.
+--
+-- Rate-limited by its own interval lock (storage_metrics_log_interval,
+-- falling back to renew_check_interval if unset) rather than the renewal
+-- sweep's "renew" lock -- so metrics logging runs on its own cadence and
+-- never gets silently skipped just because the sweep's lock is already held
+-- by another worker/call, and vice versa.
 local function log_storage_metrics(auto_ssl_instance)
   if not auto_ssl_instance:get("enable_storage_metrics_logging") then
+    return
+  end
+
+  local interval = auto_ssl_instance:get("storage_metrics_log_interval") or auto_ssl_instance:get("renew_check_interval")
+  if not get_interval_lock("metrics", interval) then
     return
   end
 
@@ -310,17 +320,19 @@ local function log_storage_metrics(auto_ssl_instance)
 end
 
 local function do_renew(auto_ssl_instance)
+  -- Attempted on every do_renew call, independent of the renewal sweep's own
+  -- interval lock below -- log_storage_metrics gates itself with its own
+  -- lock/interval, and is pcall-guarded here so a metrics-logging failure
+  -- can never block the actual renewal sweep.
+  local metrics_ok, metrics_err = pcall(log_storage_metrics, auto_ssl_instance)
+  if not metrics_ok then
+    ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to log storage metrics: ", metrics_err)
+  end
+
   -- Ensure only 1 worker executes the renewal once per interval.
   if not get_interval_lock("renew", auto_ssl_instance:get("renew_check_interval")) then
     ngx.log(ngx.ERR, "[auto-ssl][renewal-debug]: can't launch renew, renewal-state is locked for another worker for the renew_check_interval duration")
     return
-  end
-
-  -- Independently pcall-guarded so a metrics-logging failure can never
-  -- block the actual renewal sweep below.
-  local metrics_ok, metrics_err = pcall(log_storage_metrics, auto_ssl_instance)
-  if not metrics_ok then
-    ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to log storage metrics: ", metrics_err)
   end
 
   local renew_lock, new_renew_lock_err = lock:new("auto_ssl_settings", { exptime = 1800, timeout = 0 })
