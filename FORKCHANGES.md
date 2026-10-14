@@ -233,10 +233,10 @@ PR: [####5](https://github.com/ubmagh/lua-resty-auto-ssl/pull/5)
 
   No "new vs. renewed" count — already derivable from the existing per-event log lines (`"issuing new certificate for"` / `"renewed certificate for"`) by any log-shipping pipeline. Does a full storage scan (`storage:all_certs_with_expiry()`), independent of `enable_redis_sorted_list_renewal` (whose index only covers certs due soon); wrapped in its own `pcall` so a scan failure never blocks the actual renewal sweep.
 
-  Rate-limited by its own interval lock rather than sharing the sweep's — new `storage_metrics_log_interval` (unset by default, falls back to `renew_check_interval`) lets metrics log on a different cadence than the sweep itself, and keeps a busy/locked sweep from silently suppressing a metrics log (or vice versa).
+  Rate-limited by its own interval lock rather than the sweep's — new `storage_metrics_log_interval` (unset by default, falls back to `renew_check_interval`) is the *minimum time between* metrics logs. It's only checked when `do_renew` runs, so on the internal timer (one run per `renew_check_interval`) it can only make logging rarer, never more frequent; a shorter value only takes effect when `do_renew` is also triggered externally more often. Either way, a busy/locked sweep can't suppress a metrics log, or vice versa. Like the sweep, the internal timer's first run comes `renew_check_interval` after each nginx start/reload.
 
   ```lua
-  auto_ssl:set("storage_metrics_log_interval", 300) -- optional: log metrics every 5min, independent of renew_check_interval
+  auto_ssl:set("storage_metrics_log_interval", 300) -- optional: at most one metrics log per 5min (needs `do_renew` calls at least that often)
   ```
 
 - **Documented using other ACME certificate authorities** — new [`custom_ca.md`](custom_ca.md): Let's Encrypt (default, real rate limits matching this fork's `acme_order_period`), [ZeroSSL](https://zerossl.com/) (zero extra setup), and [Google Public CA](https://pki.goog/) (needs manual EAB setup — CAA record, `gcloud publicca external-account-keys create`, a `conf.d/custom.sh` entry), each with sourced rate-limit/quota notes. `README.md`'s `ca` option now links here instead of inlining.
@@ -248,7 +248,7 @@ PR: [####5](https://github.com/ubmagh/lua-resty-auto-ssl/pull/5)
 | Option | Default | Purpose |
 | --- | --- | --- |
 | `enable_storage_metrics_logging` | `false` | Opt-in: log a compact JSON storage snapshot once per renewal cycle. |
-| `storage_metrics_log_interval` | unset (falls back to `renew_check_interval`) | Own cadence for metrics logging, decoupled from the renewal sweep. |
+| `storage_metrics_log_interval` | unset (falls back to `renew_check_interval`) | Minimum time between metrics logs; checked only when `do_renew` runs. |
 
 PR: [####6](https://github.com/ubmagh/lua-resty-auto-ssl/pull/6)
 
@@ -259,6 +259,9 @@ PR: [####6](https://github.com/ubmagh/lua-resty-auto-ssl/pull/6)
 
 - **Stale sorted-list members never removed** (reported in review) — with `enable_redis_sorted_list_renewal`, a member whose cert is gone from storage (e.g. storage TTL under expire mode `1`/`2` deletes the key before the cert expires) was never `ZREM`'d: `ZREM` only runs in the adapter's `delete()`, and the only caller, `delete_cert_if_expired`, is unreachable once the TTL has removed the cert. The member was re-selected every cycle, logging an error each time, and the set grew with domain churn. Renewal now calls `storage:delete_cert()` when `get_cert` returns no cert *and no error* (a fetch error may be transient, so it never prunes then).
 - **Renewal debug log crashed on a missing `expiry`** — `ngx.http_time(nil)` errored for certs without a stored expiry; now logs `nil_expiry` instead.
+- Dropped the per-domain `Domain-counter` debug line from the renewal sweep (log noise).
+- **Docs correction:** `storage_metrics_log_interval` is a minimum gap between metrics logs, checked only when `do_renew` runs — the internal timer still logs at most once per `renew_check_interval` (wave #4 wording and code comments fixed).
+- **Note for external tooling:** the interval locks live in the `auto_ssl` shared dict as `lock:renew` and `lock:metrics` (not bare `renew`) — delete those keys to reset them.
 
 PR: [####7](https://github.com/ubmagh/lua-resty-auto-ssl/pull/7)
 
@@ -294,7 +297,7 @@ Every option this fork has added, in one place — pulled from the per-wave tabl
 | `dns_check_nameservers` | `{"8.8.8.8", "1.1.1.1"}` | Resolvers used for the check above. | [wave #3](#wave-3) |
 | `dns_check_allowed_targets` | unset | Optional stricter check: resolved address/CNAME must match an entry in this list. | [wave #3](#wave-3) |
 | `enable_storage_metrics_logging` | `false` | Opt-in: log a compact JSON storage snapshot once per renewal cycle. | [wave #4](#wave-4) |
-| `storage_metrics_log_interval` | unset (falls back to `renew_check_interval`) | Own cadence for metrics logging, decoupled from the renewal sweep. | [wave #4](#wave-4) |
+| `storage_metrics_log_interval` | unset (falls back to `renew_check_interval`) | Minimum time between metrics logs; checked only when `do_renew` runs. | [wave #4](#wave-4) |
 
 Also new, not config options: `require("resty.auto-ssl.jobs.renewal").do_renew(auto_ssl)` (manual renewal trigger, [wave #1](#wave-1)); `scripts/backfill_certs_expiry.sh` / `scripts/populate_sorted_list.sh` (Redis sorted-list migration, [wave #2](#wave-2)); `manual-test/` (manual testing setup, [wave #2](#wave-2)); [`custom_ca.md`](custom_ca.md) (using other ACME CAs, [wave #4](#wave-4)).
 
@@ -325,6 +328,7 @@ local auto_ssl = (require "resty.auto-ssl").new({
   min_ssl_certs_exptime = 86400,
 
   -- renewal (wave #1 / wave #3)
+  renew_check_interval = 86400,           -- seconds between renewal sweeps (upstream option; the sweep lock and metrics fall back to it)
   renew_age_days = 30,
   enable_internal_renew_schedule = true,
   enable_on_demand_renewal = false,       -- opt-in
@@ -351,6 +355,6 @@ local auto_ssl = (require "resty.auto-ssl").new({
 
   -- storage metrics logging (wave #4) -- opt-in
   enable_storage_metrics_logging = false,
-  storage_metrics_log_interval = nil, -- e.g. 300 -- own cadence, decoupled from renew_check_interval
+  storage_metrics_log_interval = nil, -- e.g. 300 -- min seconds between metrics logs (checked per do_renew run)
 })
 ```

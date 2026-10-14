@@ -282,9 +282,11 @@ end
 --
 -- Rate-limited by its own interval lock (storage_metrics_log_interval,
 -- falling back to renew_check_interval if unset) rather than the renewal
--- sweep's "renew" lock -- so metrics logging runs on its own cadence and
--- never gets silently skipped just because the sweep's lock is already held
--- by another worker/call, and vice versa.
+-- sweep's "renew" lock -- so it never gets silently skipped just because
+-- the sweep's lock is already held by another worker/call, and vice versa.
+-- Note it is only evaluated when do_renew runs: the internal timer calls
+-- that once per renew_check_interval, so a shorter metrics interval only
+-- matters if do_renew is also triggered externally.
 local function log_storage_metrics(auto_ssl_instance)
   if not auto_ssl_instance:get("enable_storage_metrics_logging") then
     return
