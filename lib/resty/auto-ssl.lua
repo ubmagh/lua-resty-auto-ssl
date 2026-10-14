@@ -146,10 +146,10 @@ function _M.new(options)
     options["enable_storage_metrics_logging"] = false -- opt-in: log a compact JSON storage snapshot once per renewal cycle, for external log-shipping/dashboards
   end
 
-  -- Own cadence for storage metrics logging, decoupled from the renewal
-  -- sweep's renew_check_interval. Unset by default -- falls back to
-  -- renew_check_interval at call time, so behavior is unchanged unless set
-  -- explicitly.
+  -- Minimum seconds between storage metrics logs, tracked by its own lock
+  -- (separate from the renewal sweep's). Only checked when do_renew runs, so
+  -- the internal timer still logs at most once per renew_check_interval.
+  -- Unset by default -- falls back to renew_check_interval.
   -- options["storage_metrics_log_interval"] = nil
 
   local self =  setmetatable({ options = options }, { __index = _M })
