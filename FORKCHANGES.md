@@ -12,6 +12,7 @@
     - [Features \& cutomizations: wave #3](#features--cutomizations-wave-3)
         - [New options at a glance](#new-options-at-a-glance-2)
     - [Features \& cutomizations: wave #4](#features--cutomizations-wave-4)
+        - [New options at a glance](#new-options-at-a-glance-3)
     - [Fixes: wave #5](#fixes-wave-5)
 - [All options at a glance](#all-options-at-a-glance)
     - [Full example](#full-example)

@@ -23,10 +23,7 @@
     "titleBar.activeBackground": "#2f6131",
     "titleBar.activeForeground": "#e7e7e7",
     "titleBar.inactiveBackground": "#2f613199",
-    "titleBar.inactiveForeground": "#e7e7e799",
-    "activityBar.activeBorder": "#e7e7e7",
-    "activityBarTop.activeBorder": "#e7e7e7",
-    "statusBar.inactiveBackground": "#2f6131"
+    "titleBar.inactiveForeground": "#e7e7e799"
   },
   "peacock.color": "#2f6131",
   "editor.indentSize": "tabSize",
