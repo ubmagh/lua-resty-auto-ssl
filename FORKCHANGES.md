@@ -12,6 +12,8 @@
     - [Features \& cutomizations: wave #3](#features--cutomizations-wave-3)
         - [New options at a glance](#new-options-at-a-glance-2)
     - [Features \& cutomizations: wave #4](#features--cutomizations-wave-4)
+        - [New options at a glance](#new-options-at-a-glance-3)
+    - [Fixes: wave #5](#fixes-wave-5)
 - [All options at a glance](#all-options-at-a-glance)
     - [Full example](#full-example)
 
@@ -249,6 +251,16 @@ PR: [####5](https://github.com/ubmagh/lua-resty-auto-ssl/pull/5)
 | `storage_metrics_log_interval` | unset (falls back to `renew_check_interval`) | Own cadence for metrics logging, decoupled from the renewal sweep. |
 
 PR: [####6](https://github.com/ubmagh/lua-resty-auto-ssl/pull/6)
+
+---
+
+<a id="wave-5"></a>
+### Fixes: wave #5
+
+- **Stale sorted-list members never removed** (reported in review) — with `enable_redis_sorted_list_renewal`, a member whose cert is gone from storage (e.g. storage TTL under expire mode `1`/`2` deletes the key before the cert expires) was never `ZREM`'d: `ZREM` only runs in the adapter's `delete()`, and the only caller, `delete_cert_if_expired`, is unreachable once the TTL has removed the cert. The member was re-selected every cycle, logging an error each time, and the set grew with domain churn. Renewal now calls `storage:delete_cert()` when `get_cert` returns no cert *and no error* (a fetch error may be transient, so it never prunes then).
+- **Renewal debug log crashed on a missing `expiry`** — `ngx.http_time(nil)` errored for certs without a stored expiry; now logs `nil_expiry` instead.
+
+PR: [####7](https://github.com/ubmagh/lua-resty-auto-ssl/pull/7)
 
 ---
 
