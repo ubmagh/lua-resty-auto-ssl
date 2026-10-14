@@ -98,6 +98,12 @@ local function renew_check_cert(auto_ssl_instance, storage, domain)
 
   if not cert["fullchain_pem"] then
     ngx.log(ngx.ERR, "[auto-ssl][renewal]: attempting to renew certificate for domain without certificates in storage: ", domain) -- this requires a new cert to be issued.
+    -- The cert is truly gone (e.g. storage TTL removed it), so drop any stale
+    -- sorted-list member too, or it gets re-selected every cycle forever. Not
+    -- on a fetch error, where the cert may still exist.
+    if not get_cert_err then
+      storage:delete_cert(domain)
+    end
     renew_check_cert_unlock(domain, storage, local_lock, distributed_lock_value)
     return
   end
@@ -181,7 +187,8 @@ local function renew_check_cert(auto_ssl_instance, storage, domain)
 
   -- Write out the cert.pem value to the location dehydrated expects it for
   -- checking.
-  ngx.log(ngx.ERR, "[auto-ssl][renewal-debug]: running into the renewal of :  "..domain.." expiry_field: "..ngx.http_time(cert["expiry"]))
+  local expiry = cert["expiry"] or "nil_expiry"
+  ngx.log(ngx.ERR, "[auto-ssl][renewal-debug]: running into the renewal of :  "..domain.." expiry_field: "..(expiry ~= "nil_expiry" and ngx.http_time(expiry) or expiry))
   local dir = auto_ssl_instance:get("dir") .. "/letsencrypt/certs/" .. domain
   local mkdir_result, mkdir_err = shell_execute({ "mkdir", "-p", dir })
   if mkdir_err or mkdir_result["status"] ~= 0 then
@@ -255,7 +262,6 @@ local function renew_all_domains(auto_ssl_instance)
     local domains_counter = 0
     for _, domain in ipairs(domains) do
       domains_counter = domains_counter + 1
-      ngx.log(ngx.ERR, "[auto-ssl][renewal-debug]: Domain-counter is at -> "..tostring(domains_counter)  )
       renew_check_cert(auto_ssl_instance, storage, string.lower(domain))
     end
     ngx.log(ngx.ERR, "[auto-ssl][renewal-debug]: ended renewing all domains at: "..tostring(ngx.time()) )
