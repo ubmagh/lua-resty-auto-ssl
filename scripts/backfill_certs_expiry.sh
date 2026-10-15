@@ -59,8 +59,8 @@ REDIS_PORT="6379"
 REDIS_AUTH=""         # leave empty if the redis instance has no requirepass
 REDIS_DB=""           # leave empty for the default db (0)
 REDIS_KEY_PREFIX=""   # must match the `redis` adapter's `prefix` option, if any; leave empty if unset
-SCAN_COUNT=300        # keys inspected per SCAN batch -- lower this on a heavily loaded instance
-PROGRESS_INTERVAL=5   # seconds between progress lines on stderr
+SCAN_COUNT=500        # keys inspected per SCAN batch -- lower this on a heavily loaded instance
+PROGRESS_INTERVAL=15  # seconds between progress lines on stderr
 
 DRY_RUN=true          # set to false once you've reviewed a dry run's output
 
