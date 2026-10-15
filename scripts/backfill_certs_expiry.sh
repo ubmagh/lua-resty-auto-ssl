@@ -45,7 +45,7 @@ REDIS_PORT="6379"
 REDIS_AUTH=""         # leave empty if the redis instance has no requirepass
 REDIS_DB=""           # leave empty for the default db (0)
 REDIS_KEY_PREFIX=""   # must match the `redis` adapter's `prefix` option, if any; leave empty if unset
-SCAN_COUNT=500        # keys inspected per SCAN batch -- lower this on a heavily loaded instance
+SCAN_COUNT=400        # keys inspected per SCAN batch -- lower this on a heavily loaded instance
 
 DRY_RUN=true          # set to false once you've reviewed a dry run's output
 
@@ -53,7 +53,7 @@ redis_cmd() {
   local args=(--raw -h "$REDIS_HOST" -p "$REDIS_PORT")
   [ -n "$REDIS_AUTH" ] && args+=(-a "$REDIS_AUTH" --no-auth-warning)
   [ -n "$REDIS_DB" ] && args+=(-n "$REDIS_DB")
-  redis-cli "${args[@]}" "$@"
+  keydb-cli "${args[@]}" "$@"
 }
 
 if [ -n "$REDIS_KEY_PREFIX" ]; then
@@ -91,6 +91,8 @@ while [ "$first_pass" = true ] || [ "$cursor" != "0" ]; do
       already_ok=$((already_ok + 1))
       continue
     fi
+
+    echo "No existing expiry found for '${key}', attempting to derive from fullchain_pem..."
 
     fullchain_pem="$(printf '%s' "$value" | jq -r '.fullchain_pem // empty' 2>/dev/null || true)"
     if [ -z "$fullchain_pem" ]; then
