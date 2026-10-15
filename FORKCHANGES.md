@@ -14,6 +14,7 @@
     - [Features \& cutomizations: wave #4](#features--cutomizations-wave-4)
         - [New options at a glance](#new-options-at-a-glance-3)
     - [Fixes: wave #5](#fixes-wave-5)
+    - [Features: wave #6](#features-wave-6)
 - [All options at a glance](#all-options-at-a-glance)
     - [Full example](#full-example)
 
@@ -267,6 +268,37 @@ PR: [####7](https://github.com/ubmagh/lua-resty-auto-ssl/pull/7)
 
 ---
 
+<a id="wave-6"></a>
+### Features: wave #6
+
+- **Stop a running renewal sweep** — there was no way to cancel one short of killing a worker, which leaves the locks behind (and an orphan `dehydrated`). New `require("resty.auto-ssl.jobs.renewal").stop_renewal()`, meant for an api vhost like `do_renew`. It returns:
+  - `"stopping"` — a sweep is running: it finishes the domain it's on (≤ ~60s), skips the rest, then releases its own locks, including the interval lock, so a new sweep can be triggered immediately.
+  - `"idle"` — nothing running (also the case after a killed worker, once its heartbeat expires): leftover locks (`lock:renew`, and the in-progress guard) are cleared on the spot.
+
+  Liveness is a shared-dict heartbeat (`renew:alive`, 5min TTL) refreshed per domain; a stop request made while idle never aborts the next sweep. No config option, no behavior change unless the endpoint is called.
+
+  ```nginx
+  location /stop-renewal {
+    # allow <your internal range>; deny all;
+    content_by_lua_block {
+      local state, err = require("resty.auto-ssl.jobs.renewal").stop_renewal()
+      if not state then
+        ngx.status = 500
+        ngx.say("500- Failed to request stop: ", err)
+        return
+      end
+      ngx.say("200- ", state == "stopping" and "Stop requested; the sweep halts after the domain in progress"
+                                             or "No sweep running; leftover locks cleared")
+    }
+  }
+  ```
+
+- **Documented endpoint-driven renewal as the recommended setup** — new [`external_renewal.md`](external_renewal.md): `enable_internal_renew_schedule = false` plus a dedicated vhost (trigger and stop endpoints, cron example), with the reasons (on-demand control and stop, schedule survives reloads, separate logs, run from one node, visible failures, metrics cadence) and the trade-offs (something must call it, protect the endpoint). `README.md` gets a short `enable_internal_renew_schedule` section pointing to it.
+
+PR: [####8](https://github.com/ubmagh/lua-resty-auto-ssl/pull/8)
+
+---
+
 <a id="all-options-at-a-glance"></a>
 # All options at a glance
 
@@ -299,7 +331,7 @@ Every option this fork has added, in one place — pulled from the per-wave tabl
 | `enable_storage_metrics_logging` | `false` | Opt-in: log a compact JSON storage snapshot once per renewal cycle. | [wave #4](#wave-4) |
 | `storage_metrics_log_interval` | unset (falls back to `renew_check_interval`) | Minimum time between metrics logs; checked only when `do_renew` runs. | [wave #4](#wave-4) |
 
-Also new, not config options: `require("resty.auto-ssl.jobs.renewal").do_renew(auto_ssl)` (manual renewal trigger, [wave #1](#wave-1)); `scripts/backfill_certs_expiry.sh` / `scripts/populate_sorted_list.sh` (Redis sorted-list migration, [wave #2](#wave-2)); `manual-test/` (manual testing setup, [wave #2](#wave-2)); [`custom_ca.md`](custom_ca.md) (using other ACME CAs, [wave #4](#wave-4)).
+Also new, not config options: `require("resty.auto-ssl.jobs.renewal").do_renew(auto_ssl)` (manual renewal trigger, [wave #1](#wave-1)); `scripts/backfill_certs_expiry.sh` / `scripts/populate_sorted_list.sh` (Redis sorted-list migration, [wave #2](#wave-2)); `manual-test/` (manual testing setup, [wave #2](#wave-2)); [`custom_ca.md`](custom_ca.md) (using other ACME CAs, [wave #4](#wave-4)); `require("resty.auto-ssl.jobs.renewal").stop_renewal()` (stop a running sweep, [wave #6](#wave-6)); [`external_renewal.md`](external_renewal.md) (endpoint-driven renewal setup, [wave #6](#wave-6)).
 
 ### Full example
 

@@ -204,6 +204,17 @@ How frequently (in seconds) all of the domains should be checked for certificate
 auto_ssl:set("renew_check_interval", 172800)
 ```
 
+### `enable_internal_renew_schedule`
+*Default:* `true`
+
+Set to `false` to turn off the internal recurring renewal timer and drive renewals yourself, by calling `require("resty.auto-ssl.jobs.renewal").do_renew(auto_ssl)` from a dedicated vhost (cron/your scheduler). Recommended — see [external_renewal.md](external_renewal.md) for why, and a ready-to-use vhost with trigger and stop endpoints.
+
+*Example:*
+
+```lua
+auto_ssl:set("enable_internal_renew_schedule", false)
+```
+
 ### `storage_adapter`
 *Default:* `resty.auto-ssl.storage_adapters.file`<br>
 *Options:* `resty.auto-ssl.storage_adapters.file`, `resty.auto-ssl.storage_adapters.redis`
