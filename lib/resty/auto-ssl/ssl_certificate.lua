@@ -101,8 +101,13 @@ local function issue_cert(auto_ssl_instance, storage, domain)
 
   ngx.log(ngx.NOTICE, "[auto-ssl][ssl_certificate]: issuing new certificate for ", domain)
   cert, err = ssl_provider.issue_cert(auto_ssl_instance, domain)
-  if err and err ~= "acme rate limit reached" then
-    ngx.log(ngx.ERR, "[auto-ssl][ssl_certificate]: issuing new certificate failed: ", err)
+
+  if err then
+    if err ~= "acme rate limit reached" then
+      ngx.log(ngx.ERR, "[auto-ssl][ssl_certificate]: rate_limit reached, issuing new certificate failed, domain: ", domain, ", err: ", err)
+    else
+      ngx.log(ngx.ERR, "[auto-ssl][ssl_certificate]: issuing new certificate failed, domain: ", domain, ", err: ", err)
+    end
   end
 
   issue_cert_unlock(domain, storage, local_lock, distributed_lock_value)
