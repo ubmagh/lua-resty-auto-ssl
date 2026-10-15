@@ -8,6 +8,13 @@ local ssl_provider = require "resty.auto-ssl.ssl_providers.lets_encrypt"
 
 local _M = {}
 
+-- Shared dict (auto_ssl) keys used to stop a running renewal sweep, see
+-- _M.stop_renewal below.
+local INTERVAL_LOCK_KEY = "lock:renew" -- the key get_interval_lock("renew", ...) creates
+local ABORT_KEY = "renew:abort" -- stop requested
+local ALIVE_KEY = "renew:alive" -- heartbeat, refreshed per domain while a sweep runs
+local ALIVE_TTL = 300 -- comfortably above the longest single-domain attempt
+
 -- Based on lua-rest-upstream-healthcheck's lock:
 -- https://github.com/openresty/lua-resty-upstream-healthcheck/blob/v0.03/lib/resty/upstream/healthcheck.lua#L423-L440
 --
@@ -261,6 +268,11 @@ local function renew_all_domains(auto_ssl_instance)
     ngx.log(ngx.ERR, "[auto-ssl][renewal-debug]: started renewing all domains at: "..tostring(ngx.time())  )
     local domains_counter = 0
     for _, domain in ipairs(domains) do
+      if ngx.shared.auto_ssl:get(ABORT_KEY) then
+        ngx.log(ngx.ERR, "[auto-ssl][renewal-debug]: sweep stopped on request, remaining domains skipped")
+        break
+      end
+      ngx.shared.auto_ssl:set(ALIVE_KEY, true, ALIVE_TTL)
       domains_counter = domains_counter + 1
       renew_check_cert(auto_ssl_instance, storage, string.lower(domain))
     end
@@ -354,14 +366,29 @@ local function do_renew(auto_ssl_instance)
     return
   end
 
+  local dict = ngx.shared.auto_ssl
+  dict:delete(ABORT_KEY) -- a stop request made before this sweep started doesn't apply to it
+  dict:set(ALIVE_KEY, true, ALIVE_TTL)
+
   local renew_ok, renew_err = pcall(renew_all_domains, auto_ssl_instance)
   if not renew_ok then
     ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to run do_renew cycle: ", renew_err)
   end
 
+  local stopped = dict:get(ABORT_KEY)
+  dict:delete(ALIVE_KEY)
+
   local ok, unlock_err = renew_lock:unlock()
   if not ok then
     ngx.log(ngx.ERR, "[auto-ssl][renewal]: failed to unlock: ", unlock_err)
+  end
+
+  -- Stopped on request: also release the interval lock (after the sweep's
+  -- own lock above, so a new trigger can't race a still-held one), so a new
+  -- sweep can be triggered right away.
+  if stopped then
+    dict:delete(ABORT_KEY)
+    dict:delete(INTERVAL_LOCK_KEY)
   end
 end
 
@@ -455,5 +482,33 @@ end
 
 -- exposed function to be called from the api vhost, for manual triggered renewals
 _M.do_renew = do_renew
+
+-- Stops a running renewal sweep (to be called from an api vhost, like
+-- do_renew). Returns "stopping", "idle", or nil + error.
+--
+-- A running sweep is asked to stop: it finishes the domain it's on, skips
+-- the rest, then releases its own locks (including the interval lock, so a
+-- new sweep can be triggered immediately).
+--
+-- With no live sweep (the heartbeat is absent or has expired, e.g. after a
+-- killed worker left stale locks behind) there's nothing to interrupt, so
+-- any leftover locks are cleared right away instead.
+function _M.stop_renewal()
+  local dict = ngx.shared.auto_ssl
+
+  if dict:get(ALIVE_KEY) then
+    local ok, err = dict:set(ABORT_KEY, true, 3600)
+    if not ok then
+      return nil, err
+    end
+    return "stopping"
+  end
+
+  dict:delete(ABORT_KEY)
+  dict:delete(INTERVAL_LOCK_KEY)
+  -- resty.lock's in-progress guard from do_renew (lock:new("auto_ssl_settings"), key "renew")
+  ngx.shared.auto_ssl_settings:delete("renew")
+  return "idle"
+end
 
 return _M
